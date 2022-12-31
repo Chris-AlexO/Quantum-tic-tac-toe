@@ -1,0 +1,19 @@
+{
+  "name": "qtttweb",
+  "version": "1.0.0",
+  "description": "QuantumGame",
+  "main": "app.js",
+  "scripts": {
+    "test": "qtg",
+    "start": "nodemon app.js"
+  },
+  "author": "ChrisA",
+  "license": "ISC",
+  "dependencies": {
+    "ejs": "^3.1.8",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20"
+  }
+}
