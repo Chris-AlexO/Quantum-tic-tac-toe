@@ -1,6 +1,11 @@
 import { clickableCollapseButton, game, winningMark, isThereWinner } from "./gameLogic.js";
 import { clickedAgain, playerMove } from "./placeOnBoard.js";
 
+const link = document.createElement("link");
+link.rel = "stylesheet";
+link.href = "/css/style.css";
+document.head.appendChild(link);
+
 export const canvas = document.querySelector('canvas')
 const c = canvas.getContext('2d')
 
@@ -210,6 +215,7 @@ export function Atom(xs, ys, dx, dy, orbitR, colour, r = 5, twoOrbits = true, ed
 }
 
 export function createCollapseRect() {
+    //collapse button that's clicked to collapse collapsible squares
     shift = 50
     width = 200;
 
@@ -328,7 +334,7 @@ export function drawRect(x, y, width, height, link=null){
     if(mouseClick.x >= x && mouseClick.x < x + width && mouseClick.y > y && mouseClick.y < y + height){
         mouseClick.x = undefined;
         mouseClick.y = undefined;
-        window.location = "/local";
+        window.location = link;
         console.log("clicked");
     }else{
         return;

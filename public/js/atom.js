@@ -44,7 +44,7 @@ height = 85;
 function animate(){
     requestAnimationFrame(animate);
     clearPage()
-    console.log("bruh")
+
     x = (canvas.width)/2
     y = (canvas.height-radius*2)/2
     drawHeader();
@@ -55,7 +55,7 @@ function animate(){
     drawRect(x - width/2, y + 200, width, height, "/local");
     writeText("Local Match", x , y + 250, "30px arial");
 
-    drawRect(x - width/2, y + 300, width, height)
+    drawRect(x - width/2, y + 300, width, height, "/multiplayer");
     writeText("Online Match", x, y + 350, "30px arial");
 }
 

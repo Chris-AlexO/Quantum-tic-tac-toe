@@ -22,7 +22,7 @@ export function Game(){
     this.innerSquaresArray = [];
 
     this.createArrayOfEachSquare = () => {
-        i=0;
+    i=0;
     position = 1;
     while(i<3){
         j=0
@@ -35,6 +35,10 @@ export function Game(){
         i++;
     }
 }
+
+
+
+
 
 this.collapse = () => {
     if(Number.isInteger(playerMove)){
@@ -54,6 +58,8 @@ this.collapse2 = () => {
 }
 
      this.canCollapse2 = (lst, idx_to_avoid, square_to_pree, target_square, path=[], idxPath=[], truePath=null, trueIdxPath=null) => {
+        //recursively -> look at the last big square in which a symbol was placed, try to find a link between a symbol in that big square
+        // and the big square in which a symbol was placed before it
         let index, square, idx, positionOfTwin, pth, idxPth, d;
         for(const entry of lst) {
             index = entry[0];
@@ -107,7 +113,7 @@ this.collapse2 = () => {
 
     this.defaultCollapse = (path) => {
         //posStart grabs square at the beginning of the collapse path and posEnd, the square at the end.
-        //If the mark/symbol is in one of the squares in the path but it's twin isn't, the twin square should collapse into that mark
+        //If the mark/symbol is in one of the squares in the path but its twin isn't, the twin square should collapse into that mark
         let square1, i, first, second;
 
         for(const square of path){

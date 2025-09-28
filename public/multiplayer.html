@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>
+            my web
+        </title>
+    </head>
+    <body>
+       <canvas></canvas>
+       <script type="module" src="/js/canvasMP.js"></script>
+       <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="modal-root"></div>
+
+
+    <template id="modal-template">
+    <div class="modal-overlay" data-close="overlay">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <header class="modal-header">
+            <h2 id="modal-title">Title</h2>
+            <button class="modal-close" aria-label="Close" data-close="btn">×</button>
+        </header>
+        <div class="modal-body"></div>
+        <footer class="modal-footer">
+            <button class="btn" data-action="cancel">Cancel</button>
+            <button class="btn btn-primary" data-action="confirm">Confirm</button>
+        </footer>
+        </div>
+    </div>
+</template>
+
+
+    </body>
+    </html>
+

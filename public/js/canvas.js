@@ -1,6 +1,11 @@
 import { game } from "./gameLogic.js";
 import { Atom, clearPage, createCollapseRect, drawWinningLine, Text, canvas, x, y} from "./drawGame.js";
 
+const link = document.createElement("link");
+link.rel = "stylesheet";
+link.href = "/css/style.css";
+document.head.appendChild(link);
+
 let j, i;
 let shift;
 export let ans, p;
@@ -14,7 +19,6 @@ window.addEventListener('resize', () => {
     canvas.height = (window.innerHeight); // doesn't currently work
 })
 
- //Gives the list of the moves with indices e.g [[0,1], [1,8], [2,8], [3,1]]
 game.createArrayOfEachSquare()
 
 //------------------------------------------

@@ -45,7 +45,7 @@ const x = (canvas.width - boxWidth) / 2
 const y = (canvas.height - boxHeight) / 2
 
 
-export function InnerSquares(x, y, position){
+export function InnerSquare(x, y, position){
     this.x = x;
     this.y = y;
     this.position = position;
@@ -72,7 +72,9 @@ export function InnerSquares(x, y, position){
         c.shadowColor = "transparent";
     }
 
-    this.drawBigSquares = () => {
+
+    this.drawBigSquare = () => {
+        //Draw the square
         c.beginPath();
         c.fillStyle = this.squareColour;
         c.fillRect(x+this.rC, y+this.rC, boxWidth/3 -this.rC*2, boxHeight/3 -this.rC*2);
@@ -81,6 +83,7 @@ export function InnerSquares(x, y, position){
     
 
     this.draw = () =>{
+        //Draws the inner smaller squares
         i=0;
         c.lineWidth = 1;
         c.strokeStyle = "black";
@@ -126,6 +129,7 @@ export function InnerSquares(x, y, position){
         c.stroke();
     }
 
+    //When squrare collapses, call assign
     this.assign = (symbol) => {
         if(this.assigned === false){
             console.log("assign called!")
@@ -142,15 +146,18 @@ export function InnerSquares(x, y, position){
     }
 
     this.addSymbol = (symbol) =>{
+        //place symbol (marker) on one of the inner squares
         this.list.push(symbol);
         this.symbolCount++;
     }
 
     this.chooseState = () => {
+        //Puts square in a state that allows users to select final symbol
         this.option = true;
     }
 
     this.collapseAfterChoice = (symbol) => {
+        //This is called when player has made a choice which allows game logic to auto-assign this square's symbol
         twinPosition = symbol[1];
         twinSquare = game.innerSquaresArray[twinPosition-1];
         if(twinSquare.assigned === true){
@@ -170,11 +177,13 @@ export function InnerSquares(x, y, position){
     }
 
     this.turnOn = () => {
+        //Turns on this square
         this.shutdown = false;
     }
 
 
     this.setFinalSymbol = (s) => {
+        //Sets final symbole (marker) when this square collapses
         this.finalSymbol = s;
     } 
 

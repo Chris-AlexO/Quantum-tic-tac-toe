@@ -7,3 +7,25 @@ body{
     background-image: linear-gradient(#27272a, rgba(29, 29, 31, 0.987));
     background-color: #000000;
 }
+
+canvas{
+    z-index: 0;
+}
+
+.overlay{
+    z-index: 10;
+}
+
+.backRect{
+    z-index: 10;
+}
+
+g[data-idx]:hover > .backRect {
+  fill: plum;
+  cursor: pointer;
+}
+
+.q-layer rect,
+.littleSquare {
+  pointer-events: none;
+}
