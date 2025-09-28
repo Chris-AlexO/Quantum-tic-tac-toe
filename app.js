@@ -22,7 +22,7 @@ app.get('/multiplayer/room/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'multiplayer.html'));
 });
 
-// health check (for hosts + sanity)
+/// health check (for hosts + sanity)
 app.get('/healthz', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
 const server = http.createServer(app);
