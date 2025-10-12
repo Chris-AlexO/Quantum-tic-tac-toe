@@ -1,5 +1,6 @@
 *{
     margin:0;
+
 }
 body{
     margin: 0;
@@ -8,24 +9,212 @@ body{
     background-color: #000000;
 }
 
+body.modal-open {
+  overflow: hidden;                    /* prevent scroll behind modal */
+  filter: blur(2px);                   /* fallback blur if needed */
+}
+
 canvas{
     z-index: 0;
+}
+
+.view-container{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: none;
+    z-index: 5;
+}
+
+.info-box{
+    position: absolute;
+    top: 10px;
+    color: white;
+    background-color: rgba(0,0,0,0.5);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    text-align: center;
+    z-index: 10;
+    user-select: none;
+    padding: 10px;
+    border-radius: 8px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: gray;
+    min-height: 100px;
+    min-width: 350px;
+}
+
+.modal{
+    position: fixed; inset: 0;
+  display: none;
+  z-index: 1000;
+}
+
+.modal.is-open { display: grid; place-items: center; }
+
+.modal__overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.25);         /* dim */
+  backdrop-filter: blur(6px);          /* nice soft blur */
+}
+
+
+.modal-body{
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    background-color: rgba(0, 0, 0, 0.8);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 20px;
+    text-align: center;
+    z-index: 10;
+    user-select: none;
+    padding: 20px;
+    border-radius: 8px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: grey;
+    min-height: 100px;
+    min-width: 350px;
+}
+
+.modal__close {
+  position: absolute; top: 10px; right: 12px;
+  border: 0; background: transparent; font-size: 18px; cursor: pointer;
+}
+
+
+
+
+.toast{
+    position: fixed;
+    bottom: 20px;
+    right: -250px;
+    min-width: 200px;
+    min-height: 150px;
+    
+    background-color: rgb(154, 132, 8);
+    color: rgb(0, 0, 0);
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 16px;
+    z-index: 20;
+    user-select: none;
+    opacity: 0;
+    transition: 
+        opacity 0.5s ease-in-out,
+        transform 0.5s ease-in-out;
+}
+
+.toast.show{
+    opacity: 1;
+    transform: translateX(-100%) 
+}
+
+.board-svg {
+  border: 1px solid transparent;
+  position: fixed; /* or absolute, depending on layout */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background-color: transparent;
+  min-width: 300px;
+}
+
+.board-background-rect {
+  fill: rgba(255, 7, 7, 0);
+  stroke: black;
+  stroke-width: 2px;
+}
+
+.board-little-cell-rect{
+ fill:transparent;
+ stroke:black;
+
+}
+
+svg text{
+
+    dominant-baseline: middle;
+    text-align: middle;
 }
 
 .overlay{
     z-index: 10;
 }
 
-.backRect{
+.board-background-rect{
     z-index: 10;
 }
 
-g[data-idx]:hover > .backRect {
+.classic-text {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 48px;
+  fill: white;
+  user-select: none;
+  pointer-events: none;
+}
+
+g[data-idx]:hover > .board-background-rect {
   fill: plum;
   cursor: pointer;
 }
 
-.q-layer rect,
-.littleSquare {
+.q-layer-group rect,
+.board-little-cell-rect {
   pointer-events: none;
+}
+
+button {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 15px;
+    padding: 10px 20px;
+    margin: 10px;
+    border: none;
+    border-radius: 5px;
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #0d310f;
+}
+
+.choosing-symbol{
+    animation: pulse 1.2s ease-in-out infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+    user-select: pointer;
+    transition: fill 0.2s ease-in;
+   
+}
+
+.choosing-symbol:hover{
+    fill:aqua;
+    cursor:pointer;
+}
+
+@keyframes pulse {
+0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0.6));
+}
+50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 1px rgb(23, 194, 180));
+}
+100%{
+    transform: scale(1);
+    filter: drop-shadow(0 0 0px rgba(6, 230, 219, 0.6));
+}
+
 }

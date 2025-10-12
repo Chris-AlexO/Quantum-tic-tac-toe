@@ -1,7 +1,8 @@
-import { MainView, GameView } from "./View.js";
+import { MainView, GameView, ErrorView } from "./View.js";
 import { ViewManager } from "./View.js";
+
 import { onCollapseChoice, hideWaitOverlay, showWaitOverlay, addButton, drawBoard} from "./gameUI.js";
-import { Atom, clearPage, createCollapseRect, drawWinningLine, Text, canvas, x, y} from "./drawGame.js";
+import { Atom, clearPage, createCollapseRect, drawWinningLine, Text, x, y} from "./drawGame.js";
 import { sock } from "./sock.js";
 import { sendCollapse, sendMove } from "./emitters.js";
 import { on } from "./bus.js";
@@ -9,102 +10,166 @@ import { wireSocketToBus } from "./wireHandlers.js";
 import { withAck } from "./withAck.js";
 
 
-import { getMark, getPlayerName, getRoomId, setMark, setRoomId , setRoomReady, getOrMakePlayerId} from "./store.js";
+import { getOrMakePlayerId, getRoomId, getNextAction, getMark,
+     setOnCellClick, setMark, setRoomId , setRoomReady, setTurn, setOpponentName, setBoard, setNextAction,
+     setOnSymbolClick,
+     setGameStatus,
+     setPlayerName,setHost,
+     setView,
+     setCyclePath,
+     setWinningLine,
+     setWinner
+     } from "./store.js";
 
 const link = document.createElement("link");
 link.rel = "stylesheet";
 link.href = "/css/style.css";
 document.head.appendChild(link);
 
-getOrMakePlayerId();
+const canvas = document.querySelector('canvas');
 
-let j, i;
-let shift;
-
-
-
-let currentRoomId = null;
-let myMark = null;
-let isRoomReady = null;
-let iIsHost = null;
-let board = null;
-//
-let roomIdEl = null;
-let turnEl = null;
-let winnerEl=null;
-let myNameEl = null
-let opponentNameEl = null;
-
-const url = new URL(window.location.href).toString();
-const arrurl = url.split("/");
-console.log(arrurl);
+window.addEventListener('resize', () => {
+    canvas.width = (window.innerWidth);
+    canvas.height = (window.innerHeight); // doesn't currently work
+});
 
 wireSocketToBus();
-    const vm = new ViewManager();
-    const MainViewRef = vm.register(MainView);
-    const GameViewRef = vm.register(GameView);
+export const vm = new ViewManager();
+const MainViewRef = vm.register(MainView);
+const GameViewRef = vm.register(GameView);
+const ErrorViewRef = vm.register(ErrorView);
+
+vm.connect();
 
 
-/*if(getRoomId()===arrurl[arrurl.length - 1]){
-vm.switchView(GameView);
-}else{
-vm.switchView(MainView);
-}*/
+//getOrMakePlayerId();
+
+/*
+function serializeRoomState(room) {
+  return {
+    board: room.state.board,
+    turn: room.state.turn,
+    winner: room.state.winner,
+    winningLine: room.state.winningLine,
+    boardHistory: room.boardHistory,
+    status: room.state.status,
+    players: room.players}
+  }*/ 
+
+const parseState = (s) => { 
+    JSON.parse(JSON.stringify(s));
+    setBoard(s.board);
+    setTurn(s.turn);
+    //setRoomReady(true);
+    //setNextAction(s.nextAction);
+    setGameStatus(s.status);
+
+} // simple deep clone
+
+
+
 
 const onConnect = on('net:connect', async () => {
 
-    
+    //setRoomId();
+    const url = new URL(window.location.href).toString();
+    const arrurl = url.split("/");
+    console.log(arrurl);
+    if(arrurl[arrurl.length - 2]==="room"){
+        
+            const ack = await withAck('resumeOrHello', {roomId: getRoomId() || arrurl[arrurl.length - 1]});
+
+            const state = ack.state;
+            console.log(ack);
+
+            if (!ack || ack.status === 'roomGone') {
+                console.log("This game does not exist or has ended. Please start a new game.");
+                vm.switchView(ErrorView);
+                return;
+            }
+
+            const roomId = setRoomId(ack.roomId);
+
+            const board = setBoard(state.board);
+            if(!board){
+                setGameStatus('error');
+                console.log("Error: unable to resume or join game. Game state is unretrievable. Please start a new game.");
+                return;
+            }
+
+
+
+            const mark = setMark(ack.mark);
+            if(!mark){
+                setGameStatus('error');
+                console.log("Error: unable to resume or join game. Please start a new game.");
+                return;
+            }
+            const players = ack.players;
+            setOpponentName(mark==="X"?players.O?.playerName : players.X?.playerName);
+            setPlayerName(mark==="X"?players.X?.playerName : players.O?.playerName);
+            
+
+
+            if(ack?.status === 'finished'){
+                setGameStatus('finished');
+                return;
+            } else if(ack?.status === 'waiting'){
+                setGameStatus('waiting');
+            } else if(ack?.status === 'resumed'){
+                setGameStatus('playing');
+                setNextAction(state.nextAction);
+                setCyclePath(state.cyclePath);
+                setTurn(state.turn);
+                setRoomReady(true);
+                
+                switch(state.nextAction){
+                    case "move":
+                        setOnCellClick(getMark() !== state.turn ? null : sendMove);
+                        break;
+                    case "collapse":
+                        setOnSymbolClick(getMark() !== state.turn ? null : sendCollapse);
+                        break;
+                    case "winner":
+                        setWinner(state.winner);
+                        setWinningLine(state.winningLine);
+                        setGameStatus('finished');
+                        break;
+                    default:
+                        console.warn("dafuq!");
+                }
+            };
+
+            
+            //setOnCellClick(sendMove);
+            vm.switchView(GameView);
+    }
+    else if (arrurl[arrurl.length - 1]==="multiplayer"){
+        vm.switchView(MainView);
+        return;
+        }
+
     console.log(`Connected to server Player ID: ${getOrMakePlayerId()} || RoomId: ${getRoomId()}`)
-    
-console.log(getRoomId());
      
-    const ack = await withAck('resumeOrHello', {roomId: getRoomId()});
-
-
-     if (!ack || (ack.status !== 'resumed' && !ack.state)) {
-    vm.switchView(MainView);
-    return;
-  }
-
-
-    const state = ack.state;
-    console.log(ack);
-    const mark = setMark(ack.mark);
-    const players = ack.players;
-
-    vm.switchView(GameView);
     
 
-    roomIdEl = GameView.appendText('left',`Room: ${getRoomId()}`);
-    myNameEl = GameView.appendText('right', "Name: " + (mark==="X"?players.X.playerName : players.O?.playerName ));
-    opponentNameEl = GameView.appendText('right','Opponent: '+ (mark==="X"?players.O?.playerName : players.X.playerName));
-    turnEl=  GameView.appendText('left', state.turn === mark ? "Your turn!" : "Opponent's turn!");
-       
-
-    GameView.updateState(state.board);
-    GameView.setReady(true);
-    setRoomReady(true);
-    GameView.setOnCellClick(sendMove);
-
-
+    
     
 
 });
 
 
-const roomCreated = on("room:created", (roomId) => {
-    console.log(roomId);
-    roomIdEl = GameView.appendText('left',`Room: ${roomId}`);
-
-   myNameEl = GameView.appendText('right', "Name: " + getPlayerName());
-
+const roomCreated = on("room:created", (data) => {
+    const {roomId, board} = data;
+    console.log("room created: ", roomId);
     if(roomId){
     setRoomId(roomId);
-    myMark = setMark("X");
-    console.log("switching to GameView ", myMark);
+    setMark("X");
+    setHost(true);
+    setBoard(board);
+    setGameStatus("waiting");
     vm.switchView(GameView);
 }
-
 
 });
 
@@ -117,79 +182,96 @@ const roomRequested = on('room:match:requested', (ack) => {
 
 const roomReady = on('room:ready', (data)=> {
     const {roomId, state, players} = data;
+    console.log(state);
     
-    console.log(roomId);
-    console.log(players);
-
-    opponentNameEl = GameView.appendText('right','Opponent: '+ getMark()==="X"?players.O.playerName : players.X.playerName);
-
-    
-    if(myMark==='X'){
-        GameView.setReady(true);
-        setRoomReady(true);
-        turnEl = GameView.appendText('left', "Your turn!");
-        GameView.setOnCellClick(sendMove);
-        GameView.setToken('X1');
-        vm.switchView(GameView);
-        
-        
-    }else{
-        myMark = setMark("O")
-        setRoomId(roomId);
-        
-        roomIdEl = GameView.appendText('left',`Room: ${roomId}`);
-        myNameEl = GameView.appendText('right', getPlayerName());
-        turnEl = GameView.appendText('left', "Opponent's turn!");
-
-        vm.switchView(GameView);
-    }
+    setRoomId(roomId);
+    //setMark(mark);
+    setTurn(state.turn);
+    setBoard(state.board);
+    setNextAction(state.nextAction);
+    setGameStatus("playing");
+    setOpponentName(getMark()==="X"?players.O?.playerName : players.X.playerName);
+    setRoomReady(true);
+    setView("game");
+    setOnCellClick(getMark() !== state.turn ? null : sendMove);
+    //vm.switchView(GameView);
 })
 
-const moveSent = on('room:move:sent', (bigSqaure, ack) => {
+const moveSent = on('room:move:sent', (bigSquare, ack) => {
     /*console.log(bigSqaure);
     console.log(ack.status);
     console.log(ack.message);*/
 })
 
-const roomStateUpdated = on('room:state', (state) => {
+const roomStateUpdated = on('room:state', (data) => {
+        console.log(data);
+        const {state}  = data
+        console.log(state);
         console.log(state.board);
-        GameView.updateState(state.board);
-
-        turnEl.textContent = state.turn === getMark() ? "Your turn!" : "Opponent's turn!"
-       
-
+        setBoard(state.board);
+        setTurn(state.turn);
+        setView('game');
+        
+        
         if(state.winner){
-            GameView.showWin(state.winningLine);
-            GameView.setReady(false);
-            turnEl.textContent = "Winner!";
+            setWinner(state.winner);
+            setWinningLine(state.winningLine);
+            setGameStatus('finished');
+            //setNextAction('winner');
         }
-
-
-        GameView.setReady(true);
         setRoomReady(true);
-        GameView.setOnCellClick(sendMove);
-        GameView.talk();
-        //GameView.setToken(getMark());
+        setOnCellClick(getMark() !== state.turn ? null : sendMove);
+        setNextAction(state.nextAction);
+
 })
 
 const cycleFound = on('room:cycle', (data) => {
     const {cyclePath,state} = data;
-    const turn = state.turn;
-    GameView.updateState(state.board);
-    GameView.showCollapseSquares(cyclePath);
-    
-    if(turn===getMark()){
-    console.log(cyclePath);
-    GameView.setOnCellClick(()=>{});
-    }else{
-        GameView.setOnCellClick(()=>{});
-        GameView.setOnSymbolClick(()=>{});
-    }
-
-    turnEl.textContent = "Cycle found!";
+    setTurn(state.turn);
+    setBoard(state.board);
+    setNextAction(state.nextAction);
+    setCyclePath(cyclePath);
+    setView('game');
+    //GameView.showCollapseSquares(cyclePath);
+    setOnSymbolClick(getMark() !== state.turn ? null : sendCollapse);
+    setOnCellClick(()=>{});
 })
 
+const playerOffline = on('player:offline', (data) => {
+    const {mark, playerId, playerName} = data;
+    console.log(`${playerName} went offline`);
+    setOnCellClick(()=>{});
+    setOnSymbolClick(()=>{});
 
+});
+
+const playerLeft = on('player:left', (data) => {
+    const {mark, playerName} = data;
+    console.log(`Player ${playerName} left the game`);
+    GameView.setOnCellClick(()=>{});
+    GameView.setOnSymbolClick(()=>{});
+    GameView.setReady(false);
+});
+
+const disconnected = on('net:disconnect', ({reason}) => {
+    console.log("Disconnected: ", reason);
+    setRoomReady(false);
+
+    setOnCellClick(()=>{});
+    setOnSymbolClick(()=>{});
+
+    //showWaitOverlay("Disconnected. Retrying...");
+    onConnect();
+    roomRequested();
+    roomCreated()
+    roomReady()
+    moveSent();
+    roomStateUpdated();
+    cycleFound();
+    playerOffline();
+    playerLeft();
+
+});
 
 
 
@@ -197,16 +279,15 @@ const cycleFound = on('room:cycle', (data) => {
 let boxHeight = 500
 let boxWidth = 500
 
-window.addEventListener('resize', () => {
-    canvas.width = (window.innerWidth);
-    canvas.height = (window.innerHeight); // doesn't currently work
-})
+
 
 //------------------------------------------
 let atomArray = [];
+let j, i;
+let shift;
 i=0;
 shift=15;
-while(i<50){
+while(i<65){
     let atomX = Math.random()*canvas.width*0.95 ;
     let atomY = Math.random()*canvas.height*0.95;
     let colour = Math.random() > 0.5 ? "grey" : "black";
@@ -227,11 +308,9 @@ function animate(){
     for(const atom of atomArray){
         atom.update();
     }
-
-    
+    return cancelAnimationFrame(animate);
 }
-
-animate();
+const cancelAnimation = animate();
 
 /*addButton(window.innerWidth/2,window.innerHeight/2,"Quick Game",quickMatch);
 addButton(window.innerWidth/2,window.innerHeight/2+65,"Join Game",()=>{});*/

@@ -1,12 +1,20 @@
 import { drawBoard } from "./gameUI.js";
 import { quickMatch } from "./emitters.js";
-import { setPlayerName } from "./store.js";
+import { setPlayerName , getRoomId, getTurn, getPlayerName, getMark, getState, setToastMessage, getToastMessage, setRoomId, getModalMessage} from "./store.js";
 import leoProfanity from "https://cdn.jsdelivr.net/npm/leo-profanity/+esm";
 import { Game } from "./gameLogic.js";
+import { subscribe } from "./store.js";
+import { x } from "./drawGame.js";
 
 function cleanName(name) {
   return leoProfanity.clean(name);  // replaces bad words with ****
 }
+
+const link = document.createElement("link");
+link.rel = "stylesheet";
+link.href = "/css/style.css";
+document.head.appendChild(link);
+
 
 const vw = window.innerWidth/2;
 const vh = window.innerHeight/2;
@@ -15,20 +23,36 @@ class View {
 
 constructor(builderFn, classPrefix){
     this.container = document.createElement('div');
-    Object.assign(this.container.style, {
-  position: "absolute", // attach to viewport, not document flow
-  top: "0",
-  left: "0",
-  width: "100vw",   // full viewport width
-  height: "100vh",
-  zIndex:1,  // full viewport height,
-  display : 'none'
-});
-    this.container.className = classPrefix + 'view';
+    this.classPrefix = classPrefix || 'custom-';
+
+    this.container.classList.add(classPrefix + 'View', 'view-container');
+    this.unsubscribe = null;
 
     this.builder = builderFn || null;
     this._api = null;
 
+    
+    this.vw = window.innerWidth/2;
+    this.vh = window.innerHeight/2;
+
+    this._infoBoxUlLeft = null;
+    this._infoBoxUlRight = null;
+
+
+
+}
+
+
+mount(){
+if(this.unsubscribe) return; // already mounted
+this.unsubscribe = subscribe(this.updateView.bind(this));
+}
+
+unmount(){
+if(this.unsubscribe){
+    this.unsubscribe();
+    this.unsubscribe = null;
+}
 }
 
 
@@ -39,31 +63,78 @@ get api(){
     return this._api;
 }
 
-setReady(flag) { this._api?.setReady?.(flag); console.log(`set board readt to: ${flag}`)}
-updateState(s) { this._api?.updateState?.(s); }
+/*setReady(flag) { this._api?.setReady?.(flag); console.log(`set board readt to: ${flag}`)}
 destroy() { this._api?.destroy?.(); this.container.remove(); }
-setOnCellClick (fn) {this._api?.setOnCellClick(fn); console.log(`set onCellClick to ${fn.name}`)}
 setOnSymbolClick(fn){this._api?.setOnSymbolClick(fn);};
 setToken(token) {this._api?.setToken(token);}
 showCollapseSquares(squares) {this._api?.showCollapseSquares(squares);}
-showWin(win) {this._api?.showWin(win);}
-talk() {this._api?.talk();}
+showWin(win) {this._api?.showWin(win);}*/
 
-addTextList(side = "left") {
+
+
+updateView(state) {
   // create the container once
-  if (!this._textLists) this._textLists = {};
-  if (this._textLists[side]) return this._textLists[side];
+  console.log("updating view:", this.container.className, state);
+  const side = "left";
 
-  const box = document.createElement("div");
-  Object.assign(box.style, {
-    position: "fixed",
-    top: "10px",
-    [side]: "10px",
-    color: "pink",
-    fontFamily: "system-ui, sans-serif",
-    fontSize: "14px",
-    zIndex: 1000,
+
+  if(state.toastMessage){
+    this.showToast(state.toastMessage);
+  }
+
+  if(state.modalMessage){
+    this.showModal(state.modalMessage);
+  }
+
+
+  if(!state || !state.roomId) return;
+
+  const turn = () => {
+                      if(state.gameStatus === 'finished'){
+                        if(state.winner === state.mark) return "You won!";
+                        else if(state.winner === 'draw') return "It's a draw!";
+                        else return "You lost!";
+                      }
+                      else if(state.gameStatus === 'waiting') {return "Waiting for opponent...";}
+                      if(state.turn === state.mark) {
+                        switch (state.nextAction){
+                          case 'move':
+                            return "Your turn!";
+                          case 'collapse':
+                            return 'Your Turn! Collapse a square!';
+                          default:
+                            return 'Your turn';
+
+                        }
+
+                        }
+                      else{ return "Opponent's turn!"}}
+  const textLists = ["Room ID: "+state.roomId, turn()];
+  const rightTextLists = [state.playerName||"", "Mark: "+state.mark, "Opponent: "+(state.opponentName||"N/A")];
+  if(!textLists.length) return;
+  //this._textLists
+  //if (!this._textLists) this._textLists = {};
+  //if (this._textLists[side]) return this._textLists[side];
+
+  this.api?.updateState?.(state);
+
+  if(!this._infoBoxUlLeft){
+
+  const boxLeft = document.createElement("div");
+  Object.assign(boxLeft.style, {
+    position: "absolute",
+    left: "10px",
+    margin: "0px",
+    transform: "translate(0px,0px)",
   });
+
+  const boxRight = document.createElement("div");
+  Object.assign(boxRight.style, {
+    right: "10px",
+  })
+
+  boxLeft.classList.add("info-box");
+  boxRight.classList.add("info-box");
 
   const ul = document.createElement("ul");
   Object.assign(ul.style, {
@@ -73,29 +144,56 @@ addTextList(side = "left") {
     textAlign: side === "right" ? "right" : "left",
   });
 
-  box.appendChild(ul);
-  this.container.appendChild(box);
+  const rightUl = document.createElement("ul");
+  Object.assign(rightUl.style, {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    textAlign: "right",
+  });
 
-  this._textLists[side] = ul;
-  return ul;
+
+
+  for(const text of textLists){
+    const li = document.createElement("li");
+    li.textContent = text;
+    ul.appendChild(li);
+  }
+
+  for (const text of rightTextLists){
+    const li = document.createElement("li");
+    li.textContent = text;
+    rightUl.appendChild(li);
+  }
+
+  boxLeft.appendChild(ul);
+  boxRight.appendChild(rightUl);
+
+  this.container.appendChild(boxLeft);
+  this.container.appendChild(boxRight);
+
+  this._infoBoxUlLeft = ul;
+  this._infoBoxUlRight = rightUl;
 }
 
-appendText(side, text) {
-  const ul = this.addTextList(side);
-  const li = document.createElement("li");
-  li.textContent = text;
-  ul.appendChild(li);
-  return li; // keep if you want to remove later
+  this.addToInfoBox(this._infoBoxUlLeft, textLists);
+  this.addToInfoBox(this._infoBoxUlRight, rightTextLists);
+
+  //this._textLists[side] = ul;
+  //return ul;
 }
 
-removeText(side, li) {
-  const ul = this._textLists?.[side];
-  if (ul && li && ul.contains(li)) {
-    ul.removeChild(li);
+
+addToInfoBox(infoBoxEl, textList) {
+  infoBoxEl.innerHTML = ""; // clear existing
+  for(const text of textList) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    infoBoxEl.appendChild(li);
   }
 }
 
-addElement(elTag, attribs = {}) {
+addElement(elTag, attribs = {}, parent) {
   const el = document.createElement(elTag);
 
   for (const [key, value] of Object.entries(attribs)) {
@@ -128,24 +226,24 @@ addElement(elTag, attribs = {}) {
     el.setAttribute(key, value);
   }
 
-  this.container.appendChild(el);
+  (parent || this.container).appendChild(el);
   return el;
 }
 
-addButton(x, y, text, handler) {
+addButton(x, y, text, handler, parent) {
     const btn = document.createElement("button");
     btn.textContent = text;
     Object.assign(btn.style, {
       position: "absolute",
-      left: `${x}px`,
-      top: `${y}px`,
+     left: `${x}`,
+      top: `${y}`,
       width: "250px",
       height: "50px",
       transform: 'translate(-50%,-50%)',
     });
     btn.addEventListener("click", handler);
 
-    this.container.appendChild(btn); // 👈 goes into the View container
+    (parent || this.container).appendChild(btn); // 👈 goes into the View container
     return btn;
   }
 
@@ -173,18 +271,6 @@ addButton(x, y, text, handler) {
     outline: "none",
   });
 
-  /*const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Submit";
-  Object.assign(submit.style, {
-    padding: "0.5rem 1rem",
-    fontSize: "1rem",
-    border: "none",
-    borderRadius: "0.5rem",
-    background: "#0d6efd",
-    color: "#fff",
-    cursor: "pointer",
-  });*/
 
   form.appendChild(input);
   //form.appendChild(submit);
@@ -203,6 +289,40 @@ makeChild(element){
     this.container.appendChild(element);
 }
 
+showToast(message=getToastMessage(), buttonHandler, duration = 1500) {
+  const toast = document.querySelector('.toast');
+  console.log("Showing toast:", message);
+  if (toast) {
+
+  if(buttonHandler){
+    const btn = document.createElement("button");
+    btn.textContent = "Join Room";
+    btn.style.marginTop = "10px";
+    btn.addEventListener("click", () => {
+      buttonHandler();
+      toast.classList.remove("show");
+      setToastMessage(null);
+    });
+    toast.appendChild(btn);
+  }
+
+  toast.textContent = message;
+  toast.classList.add("show");
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setToastMessage(null);
+  }, duration);
+  }
+}
+
+
+showModal(message=getModalMessage()){
+  const modal = document.querySelector('.modal');
+  modal.classList.add('is-open');
+  body.classList.add('modal-open');
+}
+
+
 }
 
 
@@ -211,23 +331,39 @@ export class ViewManager{
     constructor(container = document.body){
         this.container = container;
         this.activeView = null;
-        this.views = new Set();
+        this._unsubscribe = null;
+        this._lastState = null;
+        this.views = new Map();
 
     }
 
 register(view){
     if(!this.views.has(view)){
-        
         this.container.appendChild(view.container);}
-
         view.container.style.display = "none"; // ensure hidden initially
-        this.views.add(view);
-
+        this.views.set(view.classPrefix,view);
         console.log(`registering: ${view.container.className} under ${view.container.parentElement}`);
-
     return view;
 }
 
+connect(){
+    if(this._unsubscribe) return; // already connected
+    this._unsubscribe = subscribe(this._handleStateChange.bind(this));
+    console.log("ViewManager connected to store");
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    this.container.appendChild(toast);
+}
+
+_handleStateChange(newState){
+    if(this.activeView && this.activeView.updateView && newState !== this._lastState){
+      if(newState.view && newState.view!==this.activeView.classPrefix){
+        this.switchView(this.views.get(newState.view));
+      }
+        this.activeView?.updateView?.(newState);
+        this._lastState = newState;
+    }
+}
 
 switchView(view){
     if(this.activeView  && this.activeView!==view){
@@ -236,24 +372,42 @@ switchView(view){
     view.api;
     view.container.style.display = 'block';
     this.activeView = view;
+    this.activeView?.updateView?.(getState());
     console.log(`activated: ${this.activeView.container.className}`);
-    view.talk();
+    
+
 
 }
 
 }
 
 export const MainView = new View(null,'main');
-
+//const toast=MainView.addElement('div', { style: { height: '20vh', x:vw/2, y:vh/2 }, className:'toast' }); // spacer
 
 MainView.addForm(vw, vh - 100, "Enter your name...", (value) => {
   console.log("User entered:", value);
 });
-MainView.addButton(vw, vh, "Quick Match", quickMatch);
+MainView.addButton(`${vw}px`, `${vh}px`, "Quick Match", quickMatch);
 //MainView.addButton(vw, vh+65, "Join Match")
 
 
 
 export const GameView = new View(drawBoard, 'game');
-GameView.addTextList('left');
-GameView.addTextList('right');
+GameView.addButton('50%', '90%', "Back to Multiplayer Menu", () => {
+  const base = window.location.origin + "/multiplayer";
+  console.log(window.location.origin);
+  window.location.href = base;
+});
+
+
+export const ErrorView = new View(null, 'error');
+const modal = ErrorView.addElement('div', { style: { height: '40vh', x:vw/2, y:vh/2 }, className:'modal-body' }); // spacer
+ErrorView.addElement('h2', { text: "An error occurred", x:'50%' , y: '50%', style: { color: 'red', textAlign: 'center' } }, modal);
+ErrorView.addElement('p', { text: "Please try refreshing the page or starting a new game", x: vw, y: vh, style: { color: 'white', textAlign: 'center' } }, modal);
+ErrorView.addButton('50%', '50%', "Back to Multiplayer Menu", () => {
+  const base = window.location.origin + "/multiplayer";
+  console.log(window.location.origin);
+  window.location.href = base;
+}, modal);
+//GameView.addTextList('left');
+//GameView.addTextList('right');

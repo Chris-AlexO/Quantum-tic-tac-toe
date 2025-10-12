@@ -42,17 +42,64 @@ let waitingPlayer = null;
 let currentCyclePath = null;
 
 
+
+function updateBoard(board, square, symbol) { 
+    
+    const newBoard = [...board];
+
+        for(let i = 0; i<9; i++){
+            if(newBoard[square][i]===null){
+                newBoard[square][i]=symbol; 
+                break;
+            }}
+
+    return newBoard;
+}
+
+function checkIfOneSquareRemains(room){
+    const board = room.state.board;
+    const turn = room.state.turn;
+    let count = 0;
+    let lastSquare = null;
+    for(let i=0; i<board.length;i++){
+        if(board[i]===null){
+            count++;
+            lastSquare=i;
+        }
+    }
+    if(count===1){
+        board[lastSquare] = turn;
+    }
+
+    return board
+
+}
+
+function serializeRoomState(room) {
+  return {
+    board: room.state.board,
+    turn: room.state.turn,
+    winner: room.state.winner,
+    winningLine: room.state.winningLine,
+    boardHistory: room.boardHistory,
+    status: room.state.status,
+    players: room.players,
+    nextAction: room.state.nextAction,
+    cyclePath: room.state.cyclePath,}
+  }
+
+
 function attachSocketToMark(roomId, mark, socket) {
   const room = rooms.get(roomId);
   room.players[mark].socketId = socket.id;
-  playerIndex.set(socket.playerId, { roomId: roomId,socketId: socket.id });
+  playerIndex.set(socket.playerId, { roomId: roomId, socketId: socket.id, mark: mark });
   socket.join(roomId);
 }
 
 
-function createRoom(sock, data={roomName:"No name Room", playerName:"No name player"}){
+function createRoom(sock, data={roomName:`Room${rooms.size+1}`, playerName:"Player1"}){
+        
         const {roomName, playerName} = data;
-
         const roomId = uuidv4();
         const gameBoard = Array.from({length: 9}, () => 
             Array.from({length:9}, ()=> null)
@@ -74,9 +121,16 @@ function createRoom(sock, data={roomName:"No name Room", playerName:"No name pla
                     turn:'X',
                     moves:[],
                     symbolIndex: new Map(),
-                    winner:null
+                    started:false,
+                    winner:null,
+                    status:"waiting", //"playing", "finished"
+                    nextAction:null,
+                    cyclePath:null,
+                    winningLine:null,
                 },
+                boardHistory: [],
                 timeouts: {},
+                timeoutIntervals: {},
             }
         )
 
@@ -87,7 +141,7 @@ function createRoom(sock, data={roomName:"No name Room", playerName:"No name pla
 
         playerIndex.set(
             sock.playerId,
-            roomId
+            {roomId: roomId, socketId: sock.id, mark: 'X'}
         )
 
         sock.join(roomId);
@@ -117,35 +171,49 @@ io.on('connection', (sock) => {
     sock.on("resumeOrHello", ( payload  = {}, ack) => {
     // Case A: client sent a roomId (from URL/session)
     if(!payload) return ack?.({status:'error', message:"no payload"});
-    const {roomId} = payload;
+    const {urlRoomId} = payload;
+
+    // Case B: playerIndex knows where they were, but client didn’t send roomId
+    const rec = playerIndex.get(sock.playerId);
+    const backupRoomId = rec?.roomId;
+    
+    const roomId = urlRoomId || backupRoomId;
+
     if (roomId && rooms.has(roomId)) {
       const room = rooms.get(roomId);
       // Is this player part of it already?
       const mark = findSeat(room, sock.playerId);
-      console.log(mark);
+
       if (mark) {
         // clear any pending cleanup
         if (room.timeouts[sock.playerId]) {
+        console.log("clearing timeout for", sock.playerId);
           clearTimeout(room.timeouts[sock.playerId]);
+          clearInterval(room.timeoutIntervals[sock.playerId]);
           delete room.timeouts[sock.playerId];
+          delete room.timeoutIntervals[sock.playerId];
         }
         attachSocketToMark(roomId, mark, sock);
-        io.to(roomId).emit("playerRejoined", { mark, playerId: sock.playerId });
-        return ack?.({ status: "resumed", roomId: roomId, mark: mark, state: room.state, players: room.players });
+
+        if(room.state && room.state.status==="waiting"){
+            waitingPlayer=sock.playerId;
+             //io.to(roomId).emit("playerRejoined", { mark, playerId: sock.playerId });
+             return ack?.({ status: "waiting", roomId: roomId, mark: mark, state: serializeRoomState(room), players: room.players });
+        } else if (room.state && room.state.status==="playing"){   
+            io.to(roomId).emit("playerRejoined", { mark, playerId: sock.playerId });
+            return ack?.({ status: "resumed", roomId: roomId, mark: mark, state: serializeRoomState(room), players: room.players });
+        } else if (room.state && room.state.status==="finished"){
+            return ack?.({ status: "finished", roomId: roomId, mark: mark, state: serializeRoomState(room), players: room.players });
+        }        
       }
     }
 
-    // Case B: playerIndex knows where they were, but client didn’t send roomId
-    const rec = playerIndex.get(sock.playerId);
-    if (rec && rooms.has(rec.roomId)) {
-      const room = rooms.get(rec.roomId);
-      attachSocketToMark(room, rec.mark, sock);
-      io.to(room.id).emit("playerRejoined", { role: rec.role, playerId: sock.playerId });
-      return ack?.({ status: "resumed", roomId: room.id, role: rec.role });
-    }
-
     // Case C: fresh or room gone
-    ack?.({ status: "ok", roomId: null });
+    console.log(rooms);
+    const room = rooms.get(roomId);
+    const state = room ? room.state : null;
+
+    ack?.({ status: "roomGone", roomId: null });
   });
 
     
@@ -171,11 +239,23 @@ io.on('connection', (sock) => {
 
     sock.on('joinReadyRoom', (data, ack) => {
         //console.log('quick match request recieved by backend');
-        const { playerName}  = data;
-        const currentRoomId = hostIndex.get(sock.id)
+        if(rooms.size > 50) {
+            return ack?.({status:'error', message:'Server too busy, try again later'});
+        }
+
+        const { playerName }  = data;
+        const rec = playerIndex.get(sock.playerId);
+        const currentRoomId = rec?.roomId;
+        const mark = rec?.mark;
         if(currentRoomId) {
             console.log(`Number of rooms: ${rooms.size}`);
-            return ack?.({status:'waiting', message:'Player already in a room', roomId:currentRoomId});}
+            const room = rooms.get(currentRoomId);
+            return ack?.({status:'alreadyRoom', 
+                message:'Player already in a room', 
+                roomId:currentRoomId,
+                mark:mark,
+                status: room.state.status,
+                state: serializeRoomState(room)});}
 
         if(waitingPlayer && waitingPlayer!==sock.playerId){ // if there's a waiting player, join their room
             console.log(`found player: ${waitingPlayer}`)
@@ -188,16 +268,21 @@ io.on('connection', (sock) => {
             sock.join(roomId);
             const room = rooms.get(roomId);
             room.players.O = {playerId:sock.playerId,socketId:sock.id, playerName:playerName};
-            io.to(roomId).emit("roomReady", {roomId: roomId, state: room.state, players:room.players});
-            return ack?.({status:'ok', mark:"O"});
+            playerIndex.set(sock.playerId, { roomId: roomId, socketId: sock.id, mark: 'O' });
+            room.state.started=true;
+            room.state.status="playing";
+            room.state.nextAction="move";
+            io.to(roomId).emit("roomReady", {roomId: roomId, state:serializeRoomState(room), players:room.players});
+            return ack?.({status:'ok', mark:"O", message:'joined room'});
 
         }else{ // if no waiting player, current socket user becomes waiting player by creating a room for themselves
             const roomId = createRoom(sock, {playerName:playerName});
             console.log(`Number of rooms: ${rooms.size}`)
             //console.log(`No rooms found so creating room ${roomId}`);
             waitingPlayer=sock.playerId;
-            io.to(roomId).emit("roomCreated", roomId);
-            ack?.({status: 'waiting', roomId: roomId})
+            const board = rooms.get(roomId).state.board;
+            io.to(roomId).emit("roomCreated", {roomId: roomId, board: board});
+            ack?.({status: 'ok', mark:"X",message:'created room'}); //Don't need to send mark:"X" here. For safe measure I guess.
         }
     });
 
@@ -215,7 +300,7 @@ io.on('connection', (sock) => {
         const turn = room.state.turn;
         const symbolIndex = room.state.symbolIndex;
 
-        const insertSymbol = (square, symbol) => {for(let i = 0; i<9; i++){if(board[square][i]===null){board[square][i]=symbol; break;}} };
+        //const insertSymbol = (square, symbol) => {for(let i = 0; i<9; i++){if(board[square][i]===null){board[square][i]=symbol; break;}} };
 
         if(!room) return ack?.({status:'error', message:'room not found in Map'});
         if(turn !== player) return ack?.({status:'error', message:`Not player's ${player} turn!`});
@@ -226,7 +311,10 @@ io.on('connection', (sock) => {
         const totalMoves = room.state.moves.push(bigSquare);
         const symbol = player + Math.ceil(totalMoves/2).toString()
 
-        insertSymbol(bigSquare,symbol);
+        //insertSymbol(bigSquare,symbol);
+        const newBoard = updateBoard(board, bigSquare, symbol);
+        room.state.board = newBoard;
+        room.boardHistory.push(JSON.parse(JSON.stringify(newBoard)));
         
 
         if(symbolIndex.has(symbol)){
@@ -238,7 +326,7 @@ io.on('connection', (sock) => {
         console.log(`total moves ${totalMoves}`);
 
         if(totalMoves % 2 !== 0) {
-            io.to(roomId).emit('roomStateUpdated', room.state)
+            io.to(roomId).emit('roomStateUpdated', {state: serializeRoomState(room)})
             return ack?.({status:'ok', message:`move made new board ${board}`});}
 
         //Other player's turn
@@ -286,22 +374,21 @@ io.on('connection', (sock) => {
                         currentCyclePath = cyclePath;
                         //console.log(tempMoves);
                         console.log(cyclePath);
-                        io.to(roomId).emit('cycleFound', ({cyclePath: cyclePath, state: room.state}))
+                        room.state.cyclePath = cyclePath;
+                        room.state.nextAction='collapse';
+                        io.to(roomId).emit('cycleFound', ({cyclePath: cyclePath, state: serializeRoomState(room)}))
                         return ack?.({status:'ok'});
-
                     }else{
                         console.log(moveSymbol);
                         const newPath = [...path, [twinSquare, moveSymbol]]
                         stack.push({currentIdx: twinIdx, currentSquare: twinSquare, currentSymbol:moveSymbol, path:newPath})
                     }
 
-                };} //For loop end
+                };}//For loop end
         }//While loop end
 
-
-
-        
-        io.to(roomId).emit('roomStateUpdated', room.state);
+        console.log('Updating board state after move');
+        io.to(roomId).emit('roomStateUpdated', ({state: serializeRoomState(room)}));
         return ack?.({status:'ok', message:'Last',roomId: roomId});
     });
 
@@ -310,7 +397,9 @@ io.on('connection', (sock) => {
   
         const path = currentCyclePath;
 
-        const {roomId, square, playerSymbol} = data;
+        const {roomId, square, playerSymbol, player} = data;
+
+        console.log(`Collapse recieved. Datat: ${JSON.stringify(data)}`);
 
         const room = rooms.get(roomId);
         if(!room) return ack?.({status:'error', message:'room not found'});
@@ -355,23 +444,39 @@ io.on('connection', (sock) => {
             collapsedSymbols.add(currentSymbol);
         }
 
+        room.state.board = checkIfOneSquareRemains(room);
+
+
+
         //After collapsing, check if there is a winner
-        let foundWinner = null;
-        let winningLine = null;
+        //let foundWinner = null;
+        const winningLine = [];
+        const winningLines = [];
         for(const win of winner){
-            const sq1 = board[win[0]-1];
-            const sq2 = board[win[1]-1];
-            const sq3 = board[win[2]-1];
+            const sq1 = room.state.board[win[0]-1];
+            const sq2 = room.state.board[win[1]-1];
+            const sq3 = room.state.board[win[2]-1];
             if(typeof sq1 === 'string' && sq1===sq2 && sq2===sq3){
-                foundWinner=sq1.charAt(0);
-                winningLine=win
-                break;
+                //foundWinner=sq1.charAt(0);
+                winningLine.push(win);
+                winningLines.push(sq1.charAt(0));
             }
         }
 
-        if(foundWinner) {room.state.winner = foundWinner; room.state.winningLine=winningLine;};
-
-        io.to(roomId).emit('roomStateUpdated', room.state);
+        if (winningLines.length){
+            const a = winningLines[0]
+            const allEqual = winningLines.every(v => v === a);
+            room.state.winner= allEqual ? a : 'draw';
+            room.state.winningLine=winningLine;
+            room.state.nextAction = "winner";
+        }else {
+            room.state.winner=null;
+             room.state.nextAction = "move";
+            //room.state.turn = player === 'X' ? 'O' : 'X';
+            room.state.cyclePath=null;
+        }
+            
+        io.to(roomId).emit('roomStateUpdated', {state: serializeRoomState(room)});
         return ack?.({status:'ok', message:'collapse'});
 
 
@@ -384,16 +489,17 @@ io.on('connection', (sock) => {
         );
 
         room.state.turn = 'X'; // eventually make the players swap
-        io.to(roomId).emit('roomStateUpdated', room.state);
+        io.to(roomId).emit('roomStateUpdated', {state: serializeRoomState(room)});
+        
 
     });
 
     sock.on('disconnect', (ack) => {
-        console.log("disconnected:", sock.id, "player:", sock.playerId);
+        console.log("disconnected: ", sock.id, "player: ", sock.playerId);
         const rec = playerIndex.get(sock.playerId);
         if (!rec) return; // wasn't in a room
 
-        if(waitingPlayer===sock.id) waitingPlayer=null;//Remove this player as waiting player once they cut
+        if(waitingPlayer===sock.playerId) waitingPlayer=null;//Remove this player as waiting player once they cut
 
         const room = rooms.get(rec.roomId);
         if (!room) {
@@ -401,44 +507,57 @@ io.on('connection', (sock) => {
         return;
         }
 
+        const mark = findSeat(room, sock.playerId);
 
-        io.to(room.id).emit("playerOffline", { mark: rec.mark, playerId: sock.playerId });
+        //Should really wait like 0.5 seconds before emitting playerOffline
+        //In case they just refreshed or something
+        io.to(room.roomId).emit("playerOffline", { mark: mark, playerId: sock.playerId, playerName: room.players[mark]?.playerName });
+        console.log(`${Date.now()}someone disconected: ${sock.playerId}, they were in room ${rec.roomId} as ${rec.mark}`);
 
-
+        //let timeoutTime = 0
         
-        console.log(`someone disconected: ${sock.id}`);
+        if(room.timeouts[sock.playerId] && !room.timeoutIntervals[sock.playerId]){
+            room.timeoutIntervals[sock.playerId] = setInterval(() => {
+                io.to(room.roomId).emit("playerTimeoutWarning", { mark: mark, playerId: sock.playerId, playerName: room.players[mark]?.playerName });
+                console.log(`${Date.now()}emitting timeout warning to room`, room.roomId);
+            }, 1000);
+            return;} // already waiting to be cleaned up
 
-
-        room.players[rec.mark] = setTimeout(() => {
+        else if (!room.timeouts[sock.playerId] && !room.timeoutIntervals[sock.playerId]){
+        room.timeouts[sock.playerId] = setTimeout(() => {
             delete room.timeouts[sock.playerId];
 
-        // free the seat but keep the room if the other player is there
-            room.timeouts[playerId] = room.players[rec.mark]
-        ? { ...room.players[rec.mark], socketId: null }
-        : null;
-
-
+            const leftName = room.players[mark]?.playerName;
+            console.log(`${Date.now()}removing player ${sock.playerId} (${leftName}) from room ${room.roomId}`);
+            room.players[mark] = null;
             playerIndex.delete(sock.playerId);
+            
 
             const otherPlayer =
         (room.players.X && room.players.X.socketId) ||
         (room.players.O && room.players.O.socketId);
 
             if (!otherPlayer) {
-        rooms.delete(room.id); // both gone → delete room
-      } else {
-        io.to(room.id).emit("playerLeft", { role: rec.mark });
-      }
-        }, 15000);
 
-        
-
-
-        const roomId = hostIndex.get(sock.id);
-        if(roomId){
-            hostIndex.delete(sock.id);
-            rooms.delete(roomId);
+        for(const [k,v] of Object.entries(room.timeouts)){
+            clearTimeout(room.timeouts[k]);
         }
+
+        for(const [k,v] of Object.entries(room.timeoutIntervals)){
+            clearInterval(room.timeoutIntervals[k]);
+        }
+
+        rooms.delete(room.roomId); // both gone → delete room
+        console.log(`deleting room ${room.roomId} as both players have left`);
+        if(hostIndex.has(sock.playerId)){
+            hostIndex.delete(sock.playerId);
+        }
+      } else {
+        io.to(room.roomId).emit("playerLeft", { mark: mark, playerName:leftName });
+      }
+        }, 30000);
+    }
+
 
     });
 

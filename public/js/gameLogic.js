@@ -1,4 +1,4 @@
-import {moves, InnerSquares, lst, lstLength, playerMove} from "./placeOnBoard.js"
+import {moves, InnerSquare, lst, lstLength, playerMove} from "./placeOnBoard.js"
 import { collapseButtonClicked, boxWidth, boxHeight, x, y } from "./drawGame.js";
 
 const winner = [[1,2,3], [4,5,6], [7,8,9], [3,6,9], [2,5,8], [1,4,7], [1,5,9], [3,5,7]];

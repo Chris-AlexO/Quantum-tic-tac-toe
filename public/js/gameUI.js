@@ -1,4 +1,7 @@
 import { sendCollapse } from "./emitters.js";
+import { getMark, getTurn, getBoard, getOnCellClick, getRoomReady, getNextAction, getOnSymbolClick, getWinningLine } from "./store.js";
+import buildBoard from "./board.elements.js";
+import { on } from "./bus.js";
 
 const svgNS = "http://www.w3.org/2000/svg";
 
@@ -14,148 +17,45 @@ document.head.appendChild(link);
  const boardLeft = "20px";
 
 
-export function drawBoard({mount, onSquareClick, onSymbolClick}={}){
-const svg = document.createElementNS(svgNS, "svg");
-svg.setAttribute("width", cellSize *3);
-svg.setAttribute("height", cellSize * 3);
-svg.setAttribute("viewBox", "0 0 600 600");
-Object.assign(svg.style, {
-    border: "1px solid transparent",
-    position: "fixed",            // or "absolute" if mount is position:relative
-    top: "50%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
-    zIndex: "10",
-    backgroundColor: "transparent",
-  });
+export function drawBoard(data={}){
 
-  console.log(`onSquareClick: ${onSquareClick ? onSquareClick.name : 'None'}`);
+const mount = data.mount || null;
 
 
+const state = {
+    onCellClick: null,
+    onSymbolClick: null,
+    ready: false,
+}
 
-  // click handler (you can swap to smallSquare later)
-          const state = {
-            ready: false,
-            onSquareClick: onSquareClick || null,
-            onSymbolClick: onSymbolClick || sendCollapse,
-            classical: false,
-            myTurn: false,
-            token: 'X1',
-          }
+const onCellClickProxy = (idx) => state.onCellClick?.(idx);
 
+
+const svg = buildBoard(cellSize, onCellClickProxy);
 
 
 function cellGroup(i) { return svg.querySelector(`g[data-idx="${i}"]`); }
-function littleCellGroup(i) { return svg.querySelector(`g[data-idx="${i}"]`).querySelectorAll(`rect.littleSquare`); }
-
-
-for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          const idx = row * 3 + col; // 0..8
-
-
-          // group per cell
-        const g = document.createElementNS(svgNS, "g");
-        g.dataset.idx = String(idx);
-        g.setAttribute("data-idx", idx);
-        g.setAttribute("transform", `translate(${col * cellSize}, ${row * cellSize})`);
-        g.setAttribute("tabindex", "0"); // focusable for a11y
-
-
-         // background rect
-        const rect = document.createElementNS(svgNS, "rect");
-        rect.setAttribute("class", "backRect");
-        rect.setAttribute("x", 0);
-        rect.setAttribute("y", 0);
-        rect.setAttribute("width", cellSize);
-        rect.setAttribute("height", cellSize);
-        rect.setAttribute("fill", "transparent");
-        rect.setAttribute("stroke", "black");
-        rect.setAttribute("stroke-width", 2);
-        g.appendChild(rect);
-
-
-            //draw smaller squares
-        for(let sRow = 0; sRow<3; sRow++){
-            for(let sCol=0;sCol<3;sCol++){
-                const sIdx = sRow * 3 + sCol
-                const littleRect = document.createElementNS(svgNS, "rect");
-                littleRect.setAttribute("class", "littleSquare");
-                littleRect.setAttribute("data-idx", idx);
-                littleRect.setAttribute("data-sidx", sIdx);
-                littleRect.setAttribute("width", cellSize/3);
-                littleRect.setAttribute("height", cellSize/3);
-                littleRect.setAttribute("transform",  `translate(${sCol*cellSize/3}, ${sRow*cellSize/3})`);
-                littleRect.setAttribute("fill", "transparent");
-                littleRect.setAttribute("stroke", "black");
-                g.appendChild(littleRect);
-
-            }
-        }
-
-        const qLayer = document.createElementNS(svgNS, "g");
-        qLayer.setAttribute("class", "q-layer");
-        g.appendChild(qLayer);
-
-        const big = document.createElementNS(svgNS, "text");
-        big.setAttribute("class", "classic");
-        big.setAttribute("x", cellSize/2);
-        big.setAttribute("y", cellSize/2); // optical adjust
-        big.setAttribute("text-anchor", "middle");
-        big.setAttribute("font-size", cellSize/5);
-        big.setAttribute("font-family", "sans-serif");
-        big.textContent = "";
-        g.appendChild(big);
-
-
-
-       
-        g.addEventListener("click", (e) => {         
-        //don't add event listeners if to board if room not ready
-        console.log(state.ready);
-            if(!state.ready) return;
-            const g = e.target.closest('g[data-idx]');
-        if (!g || !svg.contains(g)) return;
-        const idx = Number(g.dataset.idx);
-        //console.log('clickOnCellEvent', idx); 
-
-
-            //state.classical ? addClassic(idx) : addQuantum(idx); 
-            //console.log(state.onSquareClick.name);
-            state.onSquareClick?.(idx);}); // demo
-        
-
-        svg.appendChild(g);
-        }
-    
-    };
-        
-      
+function littleCellGroup(i) { return svg.querySelector(`g[data-idx="${i}"]`).querySelectorAll(`rect.board-little-cell-rect`); }
 
 
 function addClassic(cellIndex, player) {
   const g = cellGroup(cellIndex);
-  const big = g.querySelector(".classic");
+  const big = g.querySelector(".classic-text");
   big.setAttribute("fill", player === "X" ? "blue" : "red");
-  big.setAttribute("dominant-baseline", "middle"); 
   big.textContent = player;
 }
 
-function addQuantum(cellIndex,smallCellIndex,token) {
+function addQuantum(cellIndex,smallCellIndex, token) {
   const g = cellGroup(cellIndex);
-  const qLayer = g.querySelector(".q-layer");
-  const existing = qLayer.querySelectorAll("text").length;
-
-
+  console.log(g);
+  const qLayer = g.querySelector(".q-layer-group");
+  //console.log(qLayer)
   const x = cellSize/6 + (smallCellIndex % 3) * cellSize/3
-
   const y = cellSize/6 + Math.floor((smallCellIndex / 3)) * cellSize/3;
-
   const t = document.createElementNS(svgNS, "text");
+  t.classList.add('quantum-symbol');
   t.setAttribute("x", x);
-  t.setAttribute("y", y);
-  t.setAttribute("dominant-baseline", "middle"); // vertical centering
-t.setAttribute("text-anchor", "middle");        
+  t.setAttribute("y", y);  
   t.setAttribute("font-size", "18");
   t.setAttribute("font-family", "system-ui, sans-serif");
   t.setAttribute("fill", token.startsWith("X") ? "#06c" : "#c00");
@@ -163,14 +63,15 @@ t.setAttribute("text-anchor", "middle");
   qLayer.appendChild(t);
 };
 
-function updateState(board){
+function updateBoard(){
+    const board = getBoard();
     for(let i = 0; i<9; i++){
         if(!Array.isArray(board[i])) {
             const g = cellGroup(i);
-            const qLayer = g.querySelector(".q-layer");
+            const qLayer = g.querySelector(".q-layer-group");
             const rect= g.querySelector("rect");
-            rect.setAttribute("fill", 'transparent');
-            const littleRects = g.querySelectorAll(`rect.littleSquare`);
+            rect.style.fill = 'rgba(191,191,191,1)';
+            const littleRects = g.querySelectorAll(`rect.board-little-cell-rect`);
             littleRects.forEach(littleRect => {littleRect.remove();})
             const texts = qLayer.querySelectorAll('text');
             texts.forEach(t => {t.remove();})
@@ -183,22 +84,26 @@ function updateState(board){
 
 };
 
-function showWin(win){
-const line = document.createElementNS(svgNS, "polygon");
+function showWin(wins){
+console.log(`drawing winning lines`);
 
+for(const win of wins){
+const line = document.createElementNS(svgNS, "polygon");
 const points = win.map(p => {
 const x = cellSize / 2 + (((p-1) % 3) * cellSize);
 const y = cellSize / 2 + (Math.floor((p-1) / 3) * cellSize);
 return x.toString()+","+y.toString();
-}).join(" ");
+}).join(" ")
 
 line.setAttribute("points", points);
 line.setAttribute("fill", "lightblue");
 line.setAttribute("stroke", "red ");
 line.setAttribute("stroke-width", "2");
- svg.appendChild(line);
+svg.appendChild(line);
 
-}
+
+}}
+
 
 function showCollapsePath(pth){
 
@@ -206,18 +111,27 @@ function showCollapsePath(pth){
 }
 
 function showCollapseSquares(squares){
-
+    if(!Array.isArray(squares)) return;
     for(let i =0;i<squares.length;i++){
     const sq = squares[i];
     const [square, symbol] = sq
     const g = cellGroup(square);
-    const qLayer = g.querySelector(".q-layer");
+    const qLayer = g.querySelector(".q-layer-group");
     const littleRects = littleCellGroup(square);
     littleRects.forEach(littleRect => {littleRect.remove();})
-    const texts = qLayer.querySelectorAll('text');
+    const texts = qLayer.querySelectorAll('.quantum-symbol');
+    console.log(qLayer);
+    console.log(texts);
     texts.forEach(t => {t.remove();})
-    const rect= g.querySelector("rect");
-    rect.setAttribute("fill", 'rgba(191, 191, 191, 1)');
+    document.querySelectorAll('.quantum-symbol').forEach(t => t.remove());
+    console.log(document.querySelectorAll('text'))
+
+    const rect= g.querySelector(".board-background-rect");
+    console.log(rect);
+    //rect.setAttribute("fill", 'rgba(191, 191, 191, 1)');
+    rect.style.fill = 'rgba(191,191,191,1)';
+    rect.style.zIndex = 100000;
+    //rect.setAttribute('z-index', '1000');
 
 
 const x =  cellSize / 2;
@@ -226,6 +140,7 @@ const y = cellSize / 2;
     const lt = document.createElementNS(svgNS, "text");
     const rt = document.createElementNS(svgNS, "text");
 
+    lt.classList.add('choosing-symbol')
     lt.setAttribute("x", x-cellSize/10);
     lt.setAttribute("y", y);
     lt.setAttribute("dominant-baseline", "middle"); 
@@ -239,7 +154,9 @@ const y = cellSize / 2;
     lt.setAttribute("role", "button");
     lt.setAttribute("tabindex", "0");
     lt.addEventListener("click", () => state.onSymbolClick(square, symbol));
+    
 
+    rt.classList.add('choosing-symbol')
     rt.setAttribute("x", x+cellSize/10);
     rt.setAttribute("y", y);
     rt.setAttribute("dominant-baseline", "middle"); 
@@ -251,7 +168,8 @@ const y = cellSize / 2;
     rt.textContent = altSymbol;
     rt.setAttribute("role", "button");
     rt.setAttribute("tabindex", "0");
-    rt.addEventListener("click", () => state.onSymbolClick(square, altSymbol));
+    rt.addEventListener("click", () => {state.
+                                        onSymbolClick(square, altSymbol)});
 
     qLayer.appendChild(lt);
     qLayer.appendChild(rt);
@@ -261,19 +179,48 @@ const y = cellSize / 2;
 }
 
 (mount || document.body).appendChild(svg);
+//document.body.appendChild(svg);
 
 
 return{
     svg,
-    setReady(ready){ state.ready = !!ready;},
-    setOnCellClick(fn){state.onSquareClick = fn || null;},
     setOnSymbolClick(fn){state.onSymbolClick = fn || null},
     destroy() {svg.remove();},
-    updateState,
+    updateState(newState){
+        //svg = buildBoard(cellSize);
+        //console.log(svg);
+        updateBoard();
+        console.log(newState);
+
+        if(newState.mark===newState.turn && newState.nextAction === 'move'){ 
+            //console.log(newState.onCellClick.name)
+            state.onCellClick = newState.onCellClick;
+            state.onSymbolClick = (()=>{});
+
+        }
+        else if(newState.mark===newState.turn && newState.nextAction === 'collapse'){
+            state.onSymbolClick = (newState.onSymbolClick);
+            state.onCellClick = (()=>{});
+            showCollapseSquares(newState.cyclePath);
+    }else if(newState.nextAction === 'winner'){
+        console.log('Board says win');
+        state.onCellClick = (()=>{});
+        state.onSymbolClick = (()=>{});
+        showWin(newState.winningLine);
+        /*ErrorView.addButton('50%', '50%', "Back to Multiplayer Menu", () => {
+          const base = window.location.origin + "/multiplayer";
+          console.log(window.location.origin);
+          window.location.href = base;
+        });*/
+    }
+
+        
+        //state.ready = getRoomReady();
+    },
+
     showWin,
-    setToken(token) {state.token = token},
     showCollapseSquares,
-    talk() {console.log(`onSquareClick: ${state.onSquareClick ? state.onSquareClick.name : 'None'}`)},
+    //talk() {console.log(`onSquareClick: ${state.onSquareClick ? state.onSquareClick.name : 'None'}`)},
 
 }
 

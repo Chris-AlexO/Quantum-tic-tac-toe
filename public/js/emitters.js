@@ -1,7 +1,7 @@
 import { sock } from "./sock.js";
 import { withAck } from "./withAck.js";
 import { emit } from "./bus.js";
-import { getRoomId, getRoomReady, getMark, getPlayerName } from "./store.js";
+import { getRoomId, getRoomReady, getMark, getPlayerName, setMark, setToastMessage, getToastMessage, setRoomId, setView, setBoard, setGameStatus, setOpponentName, setTurn } from "./store.js";
 
 
 // Ask server to create a room (you become host, and X)
@@ -21,6 +21,10 @@ export async function joinRoomById(roomId) {
   currentRoomId = ack.roomId;
   myMark = "O"; // your backend assigns O if slot is free
   // Will get 'roomReady' once both connected
+  setRoomId(roomId);
+  if(ack?.status === 'full'){
+    console.error("Room is full");
+  }
   return ack;
 }
 
@@ -30,8 +34,23 @@ export async function quickMatch() {
     console.log(playerName);
     try{
       const ack = await withAck("joinReadyRoom", {playerName: playerName});
-      emit("room:match:requested", ack);
-
+      const {status, mark, message} = ack;
+      setMark(mark);
+      if(status !== 'ok' && message!=="Player already in a room"){ 
+        console.error("Quick match failed:", ack?.message || "Unknown error");
+        return;
+      }else if(message==="Player already in a room"){
+        console.error("Player already in a room");
+        if(getToastMessage()===null){
+        setToastMessage("you are already in a room!");}
+        setRoomId(ack.roomId);
+        setBoard(ack.state.board);
+        setMark(ack.mark);
+        setTurn(ack.state.turn);
+        setOpponentName("Opponent");
+        setGameStatus(ack.status);
+        setView("game");
+      }
   return ack;
     }
     catch(err){
@@ -60,7 +79,8 @@ export async function sendCollapse(chosenBigSquare, mark) {
     const ack = await withAck("collapse", {
       roomId: currentRoomId,
       square: chosenBigSquare,     // 0..8
-      playerSymbol: mark || getMark(), // e.g. "X7"
+      playerSymbol: mark,
+      player: getMark() // e.g. "X7"
       //path: cyclePath || []
     });
     emit("room:collapse:sent", {chosenBigSquare, ack });
