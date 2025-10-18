@@ -4,7 +4,6 @@ import { io } from "/socket.io/socket.io.esm.min.js";
 
 export function getRoomIdFromURL() {
   const m = location.pathname.match(/^\/room\/([a-f0-9-]{10,})$/i);
-  console.log(m?.[1]);
   return m ? m[1] : null;
 }
 

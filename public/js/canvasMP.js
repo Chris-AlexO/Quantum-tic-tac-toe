@@ -18,7 +18,14 @@ import { getOrMakePlayerId, getRoomId, getNextAction, getMark,
      setView,
      setCyclePath,
      setWinningLine,
-     setWinner
+     setWinner,
+     setModalMessage,
+     getTimeInterval,
+     setPlayerTime,
+     setOpponentTime,
+     getPlayerTime,
+     getOpponentTime,
+     setTimeInterval
      } from "./store.js";
 
 const link = document.createElement("link");
@@ -57,13 +64,39 @@ function serializeRoomState(room) {
   }*/ 
 
 const parseState = (s) => { 
-    JSON.parse(JSON.stringify(s));
-    setBoard(s.board);
-    setTurn(s.turn);
-    //setRoomReady(true);
-    //setNextAction(s.nextAction);
-    setGameStatus(s.status);
+        JSON.parse(JSON.stringify(s));
+        
+        setTurn(s.turn);
+        setWinner(s.winner);
+        setWinningLine(set.WinningLine);
+        setCyclePath(s.cyclePath);
+        //setRoomReady(s.ready);
+        const nextAction = setNextAction(s.nextAction);
+        const gameStatus = setGameStatus(s.status);
+        setBoard(s.board);
 
+
+
+        const prevTimeInterval = getTimeInterval();
+        if(prevTimeInterval) clearInterval(prevTimeInterval);
+
+        const xTimeLeft = state.xTimeLeft;
+        const oTimeLeft = state.oTimeLeft;
+
+        if(!xTimeLeft || !oTimeLeft) return;
+
+        const mark = getMark();
+
+        setPlayerTime(mark === 'X' ? xTimeLeft : oTimeLeft);
+        setOpponentTime(mark === 'X' ? oTimeLeft : xTimeLeft);
+
+        const newTimeInterval = setInterval(() => {
+            if(mark==state.turn) setPlayerTime(getPlayerTime()-1);
+            else{setOpponentTime(getOpponentTime()-1);}
+            if(state.winner) clearInterval(newTimeInterval);
+        }, 1000)
+
+        setTimeInterval(newTimeInterval);
 } // simple deep clone
 
 
@@ -74,16 +107,16 @@ const onConnect = on('net:connect', async () => {
     //setRoomId();
     const url = new URL(window.location.href).toString();
     const arrurl = url.split("/");
-    console.log(arrurl);
+    //console.log(arrurl);
     if(arrurl[arrurl.length - 2]==="room"){
         
             const ack = await withAck('resumeOrHello', {roomId: getRoomId() || arrurl[arrurl.length - 1]});
 
             const state = ack.state;
-            console.log(ack);
+            //console.log(ack);
 
             if (!ack || ack.status === 'roomGone') {
-                console.log("This game does not exist or has ended. Please start a new game.");
+                console.warn("This game does not exist or has ended. Please start a new game.");
                 vm.switchView(ErrorView);
                 return;
             }
@@ -93,23 +126,24 @@ const onConnect = on('net:connect', async () => {
             const board = setBoard(state.board);
             if(!board){
                 setGameStatus('error');
-                console.log("Error: unable to resume or join game. Game state is unretrievable. Please start a new game.");
+                console.warn("Error: unable to resume or join game. Game state is unretrievable. Please start a new game.");
                 return;
             }
 
-
+            const prevTimeInterval = getTimeInterval();
+            if(prevTimeInterval) clearInterval(prevTimeInterval);
 
             const mark = setMark(ack.mark);
             if(!mark){
                 setGameStatus('error');
-                console.log("Error: unable to resume or join game. Please start a new game.");
+                console.warn("Error: unable to resume or join game. Please start a new game.");
                 return;
             }
             const players = ack.players;
             setOpponentName(mark==="X"?players.O?.playerName : players.X?.playerName);
             setPlayerName(mark==="X"?players.X?.playerName : players.O?.playerName);
             
-
+            console.log("yoo");
 
             if(ack?.status === 'finished'){
                 setGameStatus('finished');
@@ -134,15 +168,35 @@ const onConnect = on('net:connect', async () => {
                         setWinner(state.winner);
                         setWinningLine(state.winningLine);
                         setGameStatus('finished');
+                        setModalMessage(getMark() === state.winner ? "Gamover you won!" : "Game end. You lose!");
                         break;
                     default:
                         console.warn("dafuq!");
                 }
+                
+
+                const xTimeLeft = state.xTimeLeft;
+                const oTimeLeft = state.oTimeLeft;
+
+                if(!xTimeLeft || !oTimeLeft) {console.warn("Error. No TimeLeft"); return;}
+
+
+                setPlayerTime(mark === 'X' ? xTimeLeft : oTimeLeft);
+                setOpponentTime(mark === 'X' ? oTimeLeft : xTimeLeft);
+
+                const newTimeInterval = setInterval(() => {
+                    if(mark===state.turn) setPlayerTime(getPlayerTime()-1);
+                    else{setOpponentTime(getOpponentTime()-1);}
+                    if(state.winner) clearInterval(newTimeInterval);
+                }, 1000)
+
+                setTimeInterval(newTimeInterval);
             };
+            vm.switchView(GameView);
 
             
             //setOnCellClick(sendMove);
-            vm.switchView(GameView);
+            
     }
     else if (arrurl[arrurl.length - 1]==="multiplayer"){
         vm.switchView(MainView);
@@ -203,21 +257,48 @@ const moveSent = on('room:move:sent', (bigSquare, ack) => {
     console.log(ack.message);*/
 })
 
+const roomTimeUpdate = on('room:time', (data) => {
+
+
+
+})
+
 const roomStateUpdated = on('room:state', (data) => {
         console.log(data);
         const {state}  = data
-        console.log(state);
-        console.log(state.board);
+
         setBoard(state.board);
         setTurn(state.turn);
         setView('game');
+
+        const prevTimeInterval = getTimeInterval();
+        if(prevTimeInterval) clearInterval(prevTimeInterval);
+
+        const xTimeLeft = state.xTimeLeft;
+        const oTimeLeft = state.oTimeLeft;
+
+        if(!xTimeLeft || !oTimeLeft) return;
+
+        const mark = getMark();
+
+        setPlayerTime(mark === 'X' ? xTimeLeft : oTimeLeft);
+        setOpponentTime(mark === 'X' ? oTimeLeft : xTimeLeft);
+
+        const newTimeInterval = setInterval(() => {
+            if(mark===state.turn) setPlayerTime(getPlayerTime()-1);
+            else{setOpponentTime(getOpponentTime()-1);} 
+            if(state.winner) clearInterval(newTimeInterval);
+        }, 1000)
+
+        setTimeInterval(newTimeInterval);
         
         
         if(state.winner){
+            setModalMessage(mark === state.winner ? "Game over. You win!" : "Game end. You lose!")
             setWinner(state.winner);
             setWinningLine(state.winningLine);
             setGameStatus('finished');
-            //setNextAction('winner');
+            
         }
         setRoomReady(true);
         setOnCellClick(getMark() !== state.turn ? null : sendMove);
@@ -232,6 +313,28 @@ const cycleFound = on('room:cycle', (data) => {
     setNextAction(state.nextAction);
     setCyclePath(cyclePath);
     setView('game');
+
+    const prevTimeInterval = getTimeInterval();
+        if(prevTimeInterval) clearInterval(prevTimeInterval);
+
+        const xTimeLeft = state.xTimeLeft;
+        const oTimeLeft = state.oTimeLeft;
+
+        if(!xTimeLeft || !oTimeLeft) return;
+
+        const mark = getMark();
+
+        setPlayerTime(mark === 'X' ? xTimeLeft : oTimeLeft);
+        setOpponentTime(mark === 'X' ? oTimeLeft : xTimeLeft);
+
+        const newTimeInterval = setInterval(() => {
+            if(mark==state.turn) setPlayerTime(getPlayerTime()-1);
+            else{setOpponentTime(getOpponentTime()-1);};
+            if(state.winner) clearInterval(newTimeInterval);
+        }, 1000)
+
+        setTimeInterval(newTimeInterval);
+
     //GameView.showCollapseSquares(cyclePath);
     setOnSymbolClick(getMark() !== state.turn ? null : sendCollapse);
     setOnCellClick(()=>{});
@@ -254,7 +357,7 @@ const playerLeft = on('player:left', (data) => {
 });
 
 const disconnected = on('net:disconnect', ({reason}) => {
-    console.log("Disconnected: ", reason);
+    //console.log("Disconnected: ", reason);
     setRoomReady(false);
 
     setOnCellClick(()=>{});
@@ -287,10 +390,10 @@ let j, i;
 let shift;
 i=0;
 shift=15;
-while(i<65){
+while(i<85){
     let atomX = Math.random()*canvas.width*0.95 ;
     let atomY = Math.random()*canvas.height*0.95;
-    let colour = Math.random() > 0.5 ? "grey" : "black";
+    let colour = Math.random() > 0.5 ? "#696969" : "#2F4F4F";
     if(atomY > y - shift && atomY < y + boxHeight+shift && atomX > x-shift && atomX < x + boxWidth+shift){
         continue
     }

@@ -5,6 +5,7 @@ import leoProfanity from "https://cdn.jsdelivr.net/npm/leo-profanity/+esm";
 import { Game } from "./gameLogic.js";
 import { subscribe } from "./store.js";
 import { x } from "./drawGame.js";
+import { convertSeconds } from "./utilities.js";
 
 function cleanName(name) {
   return leoProfanity.clean(name);  // replaces bad words with ****
@@ -74,15 +75,17 @@ showWin(win) {this._api?.showWin(win);}*/
 
 updateView(state) {
   // create the container once
-  console.log("updating view:", this.container.className, state);
+  //console.log("updating view:", this.container.className, state);
   const side = "left";
 
+  const gameStatus = state.gameStatus;
 
   if(state.toastMessage){
     this.showToast(state.toastMessage);
   }
 
   if(state.modalMessage){
+    console.log('showing modal')
     this.showModal(state.modalMessage);
   }
 
@@ -109,8 +112,13 @@ updateView(state) {
 
                         }
                       else{ return "Opponent's turn!"}}
+
+
+  const opponentName = gameStatus === "waiting" ? "Waiting for opponent..." : state.opponentName
+
   const textLists = ["Room ID: "+state.roomId, turn()];
-  const rightTextLists = [state.playerName||"", "Mark: "+state.mark, "Opponent: "+(state.opponentName||"N/A")];
+  const rightTextLists = [state.mark + ": " + state.playerName||"", "Time left: "+ convertSeconds(state.playerTime) ,
+                           "Opponent: " + opponentName, "Time left: "+ convertSeconds(state.opponentTime)];
   if(!textLists.length) return;
   //this._textLists
   //if (!this._textLists) this._textLists = {};
@@ -149,7 +157,7 @@ updateView(state) {
     listStyle: "none",
     margin: 0,
     padding: 0,
-    textAlign: "right",
+    //textAlign: "right",
   });
 
 
@@ -316,11 +324,35 @@ showToast(message=getToastMessage(), buttonHandler, duration = 1500) {
 }
 
 
-showModal(message=getModalMessage()){
+showModal(message = getModalMessage()){
   const modal = document.querySelector('.modal');
+  const modalHeader = document.querySelector('.modal-header');
+  const modalBody = document.querySelector('.modal-body');
+  const modalOverlay = document.querySelector('.modal-overlay');
+  const exitButton = document.querySelector('.modal-exit');
+  modalOverlay.style.display = 'block';
   modal.classList.add('is-open');
-  body.classList.add('modal-open');
+  //document.body.classList.add('modal-open');
+  modalBody.textContent = message;
+
+  function closeModal(){
+  modal.classList.remove('is-open');
+  modalOverlay.style.display = 'none';
+  exitButton.removeEventListener('click', closeModal); // clean up listener
+  modalOverlay.removeEventListener('click', closeModal);
 }
+
+  exitButton.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', closeModal);
+
+}
+
+showCountdown(time){
+
+
+}
+
+
 
 
 }
@@ -342,14 +374,14 @@ register(view){
         this.container.appendChild(view.container);}
         view.container.style.display = "none"; // ensure hidden initially
         this.views.set(view.classPrefix,view);
-        console.log(`registering: ${view.container.className} under ${view.container.parentElement}`);
+        //console.log(`registering: ${view.container.className} under ${view.container.parentElement}`);
     return view;
 }
 
 connect(){
     if(this._unsubscribe) return; // already connected
     this._unsubscribe = subscribe(this._handleStateChange.bind(this));
-    console.log("ViewManager connected to store");
+    //console.log("ViewManager connected to store");
     const toast = document.createElement('div');
     toast.className = 'toast';
     this.container.appendChild(toast);
@@ -373,7 +405,7 @@ switchView(view){
     view.container.style.display = 'block';
     this.activeView = view;
     this.activeView?.updateView?.(getState());
-    console.log(`activated: ${this.activeView.container.className}`);
+    //console.log(`activated: ${this.activeView.container.className}`);
     
 
 

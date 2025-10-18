@@ -85,7 +85,9 @@ function serializeRoomState(room) {
     status: room.state.status,
     players: room.players,
     nextAction: room.state.nextAction,
-    cyclePath: room.state.cyclePath,}
+    cyclePath: room.state.cyclePath,
+    xTimeLeft: room.players.X?.timeLeft,
+    oTimeLeft: room.players.O?.timeLeft}
   }
 
 
@@ -113,7 +115,7 @@ function createRoom(sock, data={roomName:`Room${rooms.size+1}`, playerName:"Play
                 host: sock.playerId,
                 mode: 'ChrisOuff' || "AllanGoff",
                 players:{
-                    X: {playerId:sock.playerId, socketId:sock.id, playerName: playerName},
+                    X: {playerId:sock.playerId, socketId:sock.id, playerName: playerName, timeLeft:600},
                     O: null
                 },
                 state:{
@@ -131,6 +133,7 @@ function createRoom(sock, data={roomName:`Room${rooms.size+1}`, playerName:"Play
                 boardHistory: [],
                 timeouts: {},
                 timeoutIntervals: {},
+                timerId: null,
             }
         )
 
@@ -187,7 +190,7 @@ io.on('connection', (sock) => {
       if (mark) {
         // clear any pending cleanup
         if (room.timeouts[sock.playerId]) {
-        console.log("clearing timeout for", sock.playerId);
+        console.log(`clearing timeout for`, sock.playerId);
           clearTimeout(room.timeouts[sock.playerId]);
           clearInterval(room.timeoutIntervals[sock.playerId]);
           delete room.timeouts[sock.playerId];
@@ -212,8 +215,11 @@ io.on('connection', (sock) => {
     console.log(rooms);
     const room = rooms.get(roomId);
     const state = room ? room.state : null;
-
+    if(!room){
     ack?.({ status: "roomGone", roomId: null });
+    }else{
+        ack?.({status: 'error', message:"Room still exists but player unable to join"});
+    }
   });
 
     
@@ -221,7 +227,12 @@ io.on('connection', (sock) => {
     sock.on('createRoom', (data, ack) => {
         const [roomName, playerName] = data
         const roomId = createRoom(sock, data);
+        if(roomId){
         ack?.({status:'ok', roomId:roomId, name:rooms.get(roomId).name, mark:"X"}); //Don't need to send mark:"X" here. For safe measure I guess.
+        }
+        else{
+            ack?.({status:'error', message: "couldn't create a room"});
+        }
     });
 
     sock.on('joinSpecificRoom', ({roomId}, ack) => {
@@ -267,12 +278,27 @@ io.on('connection', (sock) => {
 
             sock.join(roomId);
             const room = rooms.get(roomId);
-            room.players.O = {playerId:sock.playerId,socketId:sock.id, playerName:playerName};
+            room.players.O = {playerId:sock.playerId,socketId:sock.id, playerName:playerName, timeLeft:600};
             playerIndex.set(sock.playerId, { roomId: roomId, socketId: sock.id, mark: 'O' });
             room.state.started=true;
             room.state.status="playing";
             room.state.nextAction="move";
             io.to(roomId).emit("roomReady", {roomId: roomId, state:serializeRoomState(room), players:room.players});
+
+            room.timerId = setInterval(() => {
+                    room.players[room.state.turn].timeLeft--;
+
+                    /*io.to(roomId).emit("time", {
+                        players: room.players,
+                         xTimeLeft: room.players.X.timeLeft,
+                         oTimeLeft: room.players.O.timeLeft});*/
+
+                    if(room.players[room.state.turn].timeLeft<1){
+                            room.state.winner = room.players[room.state.turn] === 'X' ? 'O' : 'X'
+                            clearInterval(room.timerId);
+                    }
+            }, 1000);
+
             return ack?.({status:'ok', mark:"O", message:'joined room'});
 
         }else{ // if no waiting player, current socket user becomes waiting player by creating a room for themselves
@@ -507,14 +533,29 @@ io.on('connection', (sock) => {
         return;
         }
 
+        /*if(room.status==="waiting"){
+            for(const [k,v] of Object.entries(room.timeouts)){
+            clearTimeout(room.timeouts[k]);
+            }
+
+            for(const [k,v] of Object.entries(room.timeoutIntervals)){
+                clearInterval(room.timeoutIntervals[k]);
+            }
+            clearInterval(room.timerId);
+
+            rooms.delete(room.roomId);
+            if(hostIndex.has(sock.playerId)){
+                hostIndex.delete(sock.playerId);
+            }
+        }*/
+
         const mark = findSeat(room, sock.playerId);
 
         //Should really wait like 0.5 seconds before emitting playerOffline
         //In case they just refreshed or something
         io.to(room.roomId).emit("playerOffline", { mark: mark, playerId: sock.playerId, playerName: room.players[mark]?.playerName });
-        console.log(`${Date.now()}someone disconected: ${sock.playerId}, they were in room ${rec.roomId} as ${rec.mark}`);
+        console.log(`${Date.now()} someone disconected: ${sock.playerId}, they were in room ${rec.roomId} as ${rec.mark}`);
 
-        //let timeoutTime = 0
         
         if(room.timeouts[sock.playerId] && !room.timeoutIntervals[sock.playerId]){
             room.timeoutIntervals[sock.playerId] = setInterval(() => {
@@ -528,7 +569,7 @@ io.on('connection', (sock) => {
             delete room.timeouts[sock.playerId];
 
             const leftName = room.players[mark]?.playerName;
-            console.log(`${Date.now()}removing player ${sock.playerId} (${leftName}) from room ${room.roomId}`);
+            console.log(`${Date.now()} removing player ${sock.playerId} (${leftName}) from room ${room.roomId}`);
             room.players[mark] = null;
             playerIndex.delete(sock.playerId);
             
@@ -546,9 +587,11 @@ io.on('connection', (sock) => {
         for(const [k,v] of Object.entries(room.timeoutIntervals)){
             clearInterval(room.timeoutIntervals[k]);
         }
+        clearInterval(room.timerId);
 
-        rooms.delete(room.roomId); // both gone → delete room
+        ; // both gone → delete room
         console.log(`deleting room ${room.roomId} as both players have left`);
+        rooms.delete(room.roomId);
         if(hostIndex.has(sock.playerId)){
             hostIndex.delete(sock.playerId);
         }

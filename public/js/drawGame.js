@@ -124,7 +124,7 @@ export function Atom(xs, ys, dx, dy, orbitR, colour, r = 5, twoOrbits = true, ed
 
     this.dx=dx;
     this.dy=dy;
-    this.dt = (1/100)*Math.PI;
+    this.dt = (Math.random()*5/100)*Math.PI;
 
     this.drawNuclueus = () => {
         c.beginPath();
@@ -159,7 +159,7 @@ export function Atom(xs, ys, dx, dy, orbitR, colour, r = 5, twoOrbits = true, ed
 
     this.drawElectron = (orbAngle) => {
         c.beginPath();
-        c.fillStyle = "#111C6D";
+        c.fillStyle = Math.random() > 0.5 ? "#243adfff" : "#7e0be3ff";
         cosRot = Math.cos(orbAngle);
         sinRot = Math.sin(-orbAngle)
         let electronSize = this.edge ? 15 : 2
@@ -183,7 +183,7 @@ export function Atom(xs, ys, dx, dy, orbitR, colour, r = 5, twoOrbits = true, ed
             this.dy = - this.dy;
         }
     
-            if(top <= y + boxHeight + 1 && bottom >= y-1){
+           /* if(top <= y + boxHeight + 1 && bottom >= y-1){
                 if(right >= x && left <= x + boxWidth){
                     this.dy = -this.dy;
                 }     
@@ -192,7 +192,7 @@ export function Atom(xs, ys, dx, dy, orbitR, colour, r = 5, twoOrbits = true, ed
                 if( bottom >= y && top <= y + boxHeight){
                     this.dx = -this.dx;
                 }     
-            }
+            }*/
     
         if(t >= Math.PI*2){
             t = 0;

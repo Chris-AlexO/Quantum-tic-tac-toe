@@ -8,6 +8,9 @@ const state = {
     sockID: null,
     playerName: null,
     opponentName: null,
+    playerTime: 600,
+    opponentTime: 600,
+    timeInterval:null,
     mark: null,
     host: false,
     board: null,
@@ -29,7 +32,7 @@ const state = {
 }
 
 const listeners = new Set();
-listeners.add((s) => console.log("State changed:", s));
+//listeners.add((s) => console.log("State changed:", s));
 
 export function getState(){
     return {...state}
@@ -81,7 +84,7 @@ export const getRoomReady = () => state.roomReady;
 export const setRoomReady = (ready) => patchState({ roomReady: ready });
 
 export const getGameStatus = () => state.gameStatus;
-export const setGameStatus = (status) => patchState({ gameStatus: status });
+export const setGameStatus = (status) => {patchState({ gameStatus: status }); return status};
 
 export const getPlayerName = () => state.playerName;
 export const setPlayerName = (name) => {patchState({ playerName: name });}
@@ -103,7 +106,7 @@ export const getOnCellClick = () => state.onCellClick;
 export const setOnCellClick = (fn) => patchState({ onCellClick: getTurn() === getMark() ? fn : ()=>{}});
 
 export const getNextAction = () => state.nextAction;
-export const setNextAction = (action) => patchState({ nextAction: action });
+export const setNextAction = (action) => {patchState({ nextAction: action }); return action;}
 
 export const getOnSymbolClick = () => state.onSymbolClick;
 export const setOnSymbolClick = (fn) => patchState({ onSymbolClick: getTurn() === getMark() ? fn : ()=>{}});
@@ -118,7 +121,7 @@ export const setWinningLine = (line) => patchState({ winningLine: line });
 export const getToastMessage = () => state.toastMessage;
 export const setToastMessage = (message) => patchState({ toastMessage: message });
 
-export const setModalMessage = (message) => patchState({ message : message});
+export const setModalMessage = (message) => patchState({ modalMessage : message});
 export const getModalMessage = () => state.modalMessage;
 
 export const getView = () => state.view;
@@ -129,3 +132,16 @@ export const getHost = () => state.host;
 
 export const setCyclePath = (cyclePath) => patchState({cyclePath : cyclePath});
 export const getCyclePath = () => state.cyclePath;
+
+export const getPlayerTime = () => state.playerTime;
+export const setPlayerTime = (time) => patchState({ playerTime : time});
+
+export const getOpponentTime = () => state.opponentTime
+export const setOpponentTime = (time) => patchState({ opponentTime : time});
+
+export const getTimeInterval = () => state.timeInterval;
+export const setTimeInterval = (timerId) => patchState({ timeInterval : timerId})
+
+
+
+

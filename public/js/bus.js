@@ -2,7 +2,7 @@ export const bus = new EventTarget();
 
 export function emit(type, detail) {
   bus.dispatchEvent(new CustomEvent(type, { detail }));
-  console.log(`event emitted: ${type}`);
+  //console.log(`event emitted: ${type}`);
 }
 
 export function on(type, fn) {

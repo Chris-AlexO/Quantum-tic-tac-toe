@@ -27,7 +27,7 @@ export function Game(){
     while(i<3){
         j=0
         while(j<3){
-            innerSquares = new InnerSquares(x + j*boxWidth/3, y + i*boxHeight/3, position);
+            innerSquares = new InnerSquare(x + j*boxWidth/3, y + i*boxHeight/3, position);
             this.innerSquaresArray.push(innerSquares);
             j++
             position++

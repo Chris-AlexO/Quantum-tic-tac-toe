@@ -12,7 +12,7 @@ document.head.appendChild(link);
 
  // 1. Create the <svg> element
 
- const cellSize=175;
+ const cellSize=200;
  const boardTop = "20px";
  const boardLeft = "20px";
 
@@ -56,7 +56,7 @@ function addQuantum(cellIndex,smallCellIndex, token) {
   t.classList.add('quantum-symbol');
   t.setAttribute("x", x);
   t.setAttribute("y", y);  
-  t.setAttribute("font-size", "18");
+  t.setAttribute("font-size", "25");
   t.setAttribute("font-family", "system-ui, sans-serif");
   t.setAttribute("fill", token.startsWith("X") ? "#06c" : "#c00");
   t.textContent = token;
@@ -124,7 +124,7 @@ function showCollapseSquares(squares){
     console.log(texts);
     texts.forEach(t => {t.remove();})
     document.querySelectorAll('.quantum-symbol').forEach(t => t.remove());
-    console.log(document.querySelectorAll('text'))
+    //console.log(document.querySelectorAll('text'))
 
     const rect= g.querySelector(".board-background-rect");
     console.log(rect);
@@ -134,8 +134,8 @@ function showCollapseSquares(squares){
     //rect.setAttribute('z-index', '1000');
 
 
-const x =  cellSize / 2;
-const y = cellSize / 2;
+    const x = cellSize / 2;
+    const y = cellSize / 2;
 
     const lt = document.createElementNS(svgNS, "text");
     const rt = document.createElementNS(svgNS, "text");
@@ -192,21 +192,25 @@ return{
         updateBoard();
         console.log(newState);
 
-        if(newState.mark===newState.turn && newState.nextAction === 'move'){ 
+        if(newState.nextAction === 'move'){ 
             //console.log(newState.onCellClick.name)
+            if(newState.mark===newState.turn ){
             state.onCellClick = newState.onCellClick;
-            state.onSymbolClick = (()=>{});
+            state.onSymbolClick = (()=>{});}
 
         }
-        else if(newState.mark===newState.turn && newState.nextAction === 'collapse'){
+        else if(newState.nextAction === 'collapse'){
+
+          if(newState.mark===newState.turn){
             state.onSymbolClick = (newState.onSymbolClick);
             state.onCellClick = (()=>{});
-            showCollapseSquares(newState.cyclePath);
-    }else if(newState.nextAction === 'winner'){
-        console.log('Board says win');
-        state.onCellClick = (()=>{});
-        state.onSymbolClick = (()=>{});
-        showWin(newState.winningLine);
+          }
+          showCollapseSquares(newState.cyclePath);
+
+        }else if(newState.nextAction === 'winner'){
+            state.onCellClick = (()=>{});
+            state.onSymbolClick = (()=>{});
+            showWin(newState.winningLine);
         /*ErrorView.addButton('50%', '50%', "Back to Multiplayer Menu", () => {
           const base = window.location.origin + "/multiplayer";
           console.log(window.location.origin);

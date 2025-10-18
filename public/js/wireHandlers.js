@@ -5,6 +5,7 @@ export function wireSocketToBus() {
   const onConnect = () => emit("net:connect", { id: sock.id });
   const onRoomCreated = (roomId) => emit("room:created", roomId);
   const onRoomReady = (roomId) => emit("room:ready", roomId);
+  const onTimeUpdate = (payload) => emit("room:time", payload);
   const onRoomState = (state) => emit("room:state", state);
   const onCycleFound = (payload) => emit("room:cycle", payload);
   const onPlayerOffline = (r) => emit("player:offline", r);
@@ -12,8 +13,9 @@ export function wireSocketToBus() {
   const onDisconnect = (r) => emit("net:disconnect", { reason: r });
 
   sock.on("connect", onConnect);
-  sock.on('roomCreated', onRoomCreated)
+  sock.on('roomCreated', onRoomCreated);
   sock.on("roomReady", onRoomReady);
+  sock.on("roomTime", onTimeUpdate);
   sock.on("roomStateUpdated", onRoomState);
   sock.on("cycleFound", onCycleFound);
   sock.on("playerOffline", onPlayerOffline);
@@ -23,7 +25,9 @@ export function wireSocketToBus() {
   // teardown
   return () => {
     sock.off("connect", onConnect);
+    sock.off('roomCreated', onRoomCreated);
     sock.off("roomReady", onRoomReady);
+    sock.off("roomTime", onTimeUpdate);
     sock.off("roomStateUpdated", onRoomState);
     sock.off("cycleFound", onCycleFound);
     sock.off("playerOffline", onPlayerOffline);

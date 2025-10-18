@@ -73,7 +73,7 @@ export function InnerSquare(x, y, position){
     }
 
 
-    this.drawBigSquare = () => {
+    this.drawBigSquares = () => {
         //Draw the square
         c.beginPath();
         c.fillStyle = this.squareColour;

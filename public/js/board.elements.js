@@ -131,3 +131,21 @@ const big = document.createElementNS(svgNS, "text");
             big.setAttribute("font-family", "sans-serif");
             return big;
 };
+
+function buildClassicMarks(cellSize){
+
+    const x = document.createElementNS(svgNS, "path");
+    x.setAttribute(
+    "d",
+    `M ${cellSize*0.1} ${cellSize*0.1} L ${cellSize*0.9} ${cellSize*0.9} M ${cellSize*0.1} ${cellSize*0.9} L ${cellSize*0.9} ${cellSize*0.1}`);
+
+    x.setAttribute("fill", "none");
+    x.setAttribute("stroke", "currentColor");   // or a fixed colour like "#fff"
+    x.setAttribute("stroke-width", w);
+    x.setAttribute("stroke-linecap", "round");
+    x.setAttribute("vector-effect", "non-scaling-stroke"); // keeps stroke constant if scaled
+
+  return x;
+
+
+}
