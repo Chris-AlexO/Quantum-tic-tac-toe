@@ -15,6 +15,7 @@ export default class Game {
     this.winner = null;
     this.winningLine = null;
     this.cyclePath = null;
+    this.collapseChoices = null;
     this.symbolIndex = new Map();
     this.moves = [];
 
@@ -51,9 +52,9 @@ export default class Game {
     this.nextAction = C.NEXT_ACTION[action];
   }
 
-  end() {
-    const result = checkWinner(this.board.getBoardArray());
-    this.winner = result.winner ? result.winningLines[0] : this.winner;
+  end(ruleset) {
+    const result = checkWinner(this.board.getBoardArray(), { ruleset });
+    this.winner = result.winner ? (result.resolvedWinner ?? result.winningLines[0]) : this.winner;
     this.winningLine = result.winningCombos?.[0] ?? null;
     this.stopTimer();
   }
@@ -90,6 +91,10 @@ export default class Game {
     return this.cyclePath;
   }
 
+  getCollapseChoices() {
+    return this.collapseChoices;
+  }
+
   makeMove(square, symbol) {
     const move = { square, symbol };
     this.moves.push(move);
@@ -98,6 +103,10 @@ export default class Game {
 
   setCyclePath(cyclePath) {
     this.cyclePath = cyclePath;
+  }
+
+  setCollapseChoices(collapseChoices) {
+    this.collapseChoices = collapseChoices;
   }
 
   setNextAction(action) {

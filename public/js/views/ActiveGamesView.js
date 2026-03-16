@@ -112,7 +112,7 @@ export class ActiveGamesView extends View {
 
       this.addElement("p", {
         class: "main-card-copy",
-        textContent: `Updated ${formatUpdatedAt(game.updatedAt)}`
+        textContent: `${game.ruleset === "goff" ? "Allan Goff" : "House"} rules • Updated ${formatUpdatedAt(game.updatedAt)}`
       }, item);
 
       const button = this.addElement("button", {

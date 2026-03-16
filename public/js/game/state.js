@@ -8,6 +8,7 @@ function createInitialState() {
       status: "waiting",
       host: false,
       type: null,
+      ruleset: null,
       countdownEndsAt: null,
       role: "player",
       playerMark: "X",
@@ -32,6 +33,7 @@ function createInitialState() {
     game: {
       board: null,
       cyclePath: null,
+      collapseChoices: null,
       turn: null,
       winner: null,
       winningLine: null,
@@ -90,6 +92,9 @@ function cloneState() {
       cyclePath: Array.isArray(state.game.cyclePath)
         ? state.game.cyclePath.map(step => [...step])
         : state.game.cyclePath,
+      collapseChoices: Array.isArray(state.game.collapseChoices)
+        ? state.game.collapseChoices.map(step => [...step])
+        : state.game.collapseChoices,
       winningLine: Array.isArray(state.game.winningLine)
         ? state.game.winningLine.map(line => (Array.isArray(line) ? [...line] : line))
         : state.game.winningLine
@@ -164,6 +169,7 @@ function normalizeServerState(serverState, mark, role = mark ? "player" : "spect
       status: serverState.session.status,
       host: serverState.session.host,
       type: serverState.session.type,
+      ruleset: serverState.session.ruleset ?? state.session.ruleset ?? getPreferredRuleset(),
       countdownEndsAt: serverState.session.countdownEndsAt ?? null,
       role,
       playerMark: isPlayer ? mark : null,
@@ -286,6 +292,18 @@ export const setGameStatus = status =>
   });
 
 export const getPlayerName = () => localStorage.getItem("playerName") || state.players.me.name;
+export function getPreferredRuleset() {
+  return localStorage.getItem("preferredRuleset") || "house";
+}
+export function setPreferredRuleset(ruleset) {
+  localStorage.setItem("preferredRuleset", ruleset);
+  patchState({
+    session: {
+      ...state.session,
+      ruleset: state.session.type ? state.session.ruleset : ruleset
+    }
+  });
+}
 export const setPlayerName = name => {
   localStorage.setItem("playerName", name);
   patchState({

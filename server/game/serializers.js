@@ -12,6 +12,7 @@ export function serializeRoomState(room) {
         roomId: room.roomId,
         host: room.host,
         type: room.type,
+        ruleset: room.ruleset,
         status: room.status,
         countdownEndsAt: room.countdownEndsAt,
         rematchRequest: room.getRematchRequest(),
@@ -42,6 +43,7 @@ export function serializeRoomState(room) {
     {
       board: board.board,
       cyclePath: game.cyclePath,
+      collapseChoices: game.collapseChoices,
       turn: game.turn,
       winner: game.winner,
       winningLine: game.winningLine,

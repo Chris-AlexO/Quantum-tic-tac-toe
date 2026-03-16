@@ -10,6 +10,7 @@ export default class Room {
         this.roomName = deps?.roomName;
         this.type = deps?.type;
         this.host = deps?.host;
+        this.ruleset = deps?.ruleset ?? C.RULESETS.HOUSE;
 
         this.players = {
             X: deps?.playerX ?? null,
@@ -56,7 +57,7 @@ export default class Room {
     }
 
     endGame() {
-        this.game.end();
+        this.game.end(this.ruleset);
         this.status = C.ROOM_STATUS.FINISHED;
         }
 

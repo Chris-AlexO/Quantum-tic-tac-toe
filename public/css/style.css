@@ -557,6 +557,11 @@ svg text{
   background: rgba(248, 250, 252, 0.2);
 }
 
+.classic-token {
+  font-size: 2.1rem;
+  letter-spacing: 0.04em;
+}
+
 .history-panel {
   display: flex;
   flex-direction: column;
@@ -1173,6 +1178,11 @@ svg text{
 
 .main-secondary-button:hover {
   background: rgba(248, 250, 252, 0.2);
+}
+
+.main-secondary-button.is-selected {
+  border-color: rgba(56, 189, 248, 0.38);
+  background: rgba(14, 165, 233, 0.16);
 }
 
 .main-secondary-button:disabled {

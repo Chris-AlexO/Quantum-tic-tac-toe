@@ -23,10 +23,11 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
 
     const rect = g.querySelector(".board-background-rect") || g.querySelector("rect");
     if (rect) {
-      rect.classList.add(player === "X" ? "board-collapsed-x" : "board-collapsed-o");
+      rect.classList.add(player.startsWith("X") ? "board-collapsed-x" : "board-collapsed-o");
     }
 
-    big.classList.add(player === "X" ? "board-classic-x" : "board-classic-o");
+    big.classList.add(player.startsWith("X") ? "board-classic-x" : "board-classic-o");
+    big.classList.toggle("classic-token", player.length > 1);
     big.textContent = player;
   }
 
@@ -161,11 +162,18 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
     });
   }
 
-  function showCollapseSquares(squares) {
-    if (!Array.isArray(squares)) return;
+  function showCollapseSquares(choices) {
+    if (!Array.isArray(choices)) return;
 
-    for (let i = 0; i < squares.length; i++) {
-      const [square, symbol] = squares[i];
+    const choicesBySquare = new Map();
+    choices.forEach(([square, symbol]) => {
+      const key = `${square}:${symbol}`;
+      const existing = choicesBySquare.get(square) ?? new Map();
+      existing.set(key, symbol);
+      choicesBySquare.set(square, existing);
+    });
+
+    for (const [square, symbolMap] of choicesBySquare.entries()) {
       const g = cellGroup(square);
       if (!g) continue;
 
@@ -179,23 +187,18 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
         rect.classList.add("board-collapse-target");
       }
 
-      // Use the paired symbol when possible
-      const altSymbol = squares.length > 1
-        ? (i % 2 === 0 ? squares[i + 1]?.[1] : squares[i - 1]?.[1])
-        : symbol;
+      const squareChoices = Array.from(symbolMap.values());
 
-      const choices = [symbol, altSymbol ?? symbol];
-      const positions = [
-        { x: cellSize * 0.16, y: cellSize * 0.72 },
-        { x: cellSize * 0.54, y: cellSize * 0.72 },
-      ];
-
-      choices.forEach((choiceSymbol, choiceIndex) => {
+      squareChoices.forEach((choiceSymbol, choiceIndex) => {
+        const column = choiceIndex % 2;
+        const row = Math.floor(choiceIndex / 2);
+        const baseX = column === 0 ? cellSize * 0.16 : cellSize * 0.54;
+        const baseY = cellSize * (0.72 + row * 0.16);
         const group = document.createElementNS(svgNS, "g");
         group.classList.add("collapse-choice");
         group.setAttribute(
           "transform",
-          `translate(${positions[choiceIndex].x}, ${positions[choiceIndex].y})`
+          `translate(${baseX}, ${baseY})`
         );
 
         const pill = document.createElementNS(svgNS, "rect");
@@ -248,7 +251,7 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
   }
 
   if (state.game.nextAction === "collapse" && showCollapseChoices) {
-    showCollapseSquares(state.game.cyclePath);
+    showCollapseSquares(state.game.collapseChoices ?? state.game.cyclePath);
   }
 
   if (state.game.nextAction === "winner") {

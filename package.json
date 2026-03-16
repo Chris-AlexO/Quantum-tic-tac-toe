@@ -6,9 +6,17 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "NODE_ENV=development nodemon server/index.js",
+    "start:staging": "node --env-file=.env.staging server/index.js",
+    "start:production": "node --env-file=.env.production server/index.js",
+    "dev": "nodemon --env-file=.env.development server/index.js",
+    "db:init": "node server/persistence/initDb.js",
+    "db:init:staging": "node --env-file=.env.staging server/persistence/initDb.js",
+    "db:init:production": "node --env-file=.env.production server/persistence/initDb.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
+  },
+  "engines": {
+    "node": ">=20.10.0"
   },
   "author": "ChrisA",
   "license": "ISC",

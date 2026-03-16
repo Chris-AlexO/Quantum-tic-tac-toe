@@ -1,4 +1,10 @@
-import { getPlayerName, getState, setState, setTimeInterval } from "./state.js";
+import {
+  getPlayerName,
+  getPreferredRuleset,
+  getState,
+  setState,
+  setTimeInterval
+} from "./state.js";
 
 const BOARD_SIZE = 9;
 const INNER_BOARD_SIZE = 9;
@@ -14,6 +20,28 @@ const WINNING_LINES = [
 ];
 const TURN_SECONDS = 600;
 const MATCH_START_DELAY_MS = 3000;
+const RULESETS = {
+  HOUSE: "house",
+  GOFF: "goff"
+};
+
+function classicalMarkOf(token) {
+  return typeof token === "string" ? token.charAt(0) : null;
+}
+
+function subscriptOf(token) {
+  if (typeof token !== "string") return 0;
+  const match = token.match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function classicalizeToken(token, ruleset = RULESETS.HOUSE) {
+  if (ruleset === RULESETS.GOFF) {
+    return token;
+  }
+
+  return classicalMarkOf(token);
+}
 
 function createBoard() {
   return Array.from({ length: BOARD_SIZE }, () =>
@@ -82,7 +110,9 @@ function checkForCycle(moves, bigSquare, bigSquareOfTwin, symbol) {
   return { cycleFound: false, cyclePath: null };
 }
 
-function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
+function collapseEntanglement(symbolIndex, board, square, playerSymbol, {
+  ruleset = RULESETS.HOUSE
+} = {}) {
   const collapsedSymbols = new Set();
   const stack = [{ currentSquare: square, currentSymbol: playerSymbol }];
 
@@ -107,8 +137,7 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
       stack.push({ currentSquare: twinToCheck, currentSymbol: symbol });
     }
 
-    board[currentSquare] =
-      currentSymbol.length > 1 ? currentSymbol.charAt(0) : currentSymbol;
+    board[currentSquare] = classicalizeToken(currentSymbol, ruleset);
 
     collapsedSymbols.add(currentSymbol);
   }
@@ -116,29 +145,66 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
   return board;
 }
 
-function checkWinner(board) {
+function resolveWinnerFromDetails(winningDetails, ruleset = RULESETS.HOUSE) {
+  if (!winningDetails.length) {
+    return null;
+  }
+
+  const distinctMarks = new Set(winningDetails.map(detail => detail.mark));
+  if (distinctMarks.size === 1) {
+    return winningDetails[0].mark;
+  }
+
+  if (ruleset !== RULESETS.GOFF) {
+    return "draw";
+  }
+
+  const sorted = [...winningDetails].sort((a, b) => a.maxSubscript - b.maxSubscript);
+  if (!sorted[1] || sorted[0].maxSubscript !== sorted[1].maxSubscript) {
+    return sorted[0].mark;
+  }
+
+  return "draw";
+}
+
+function checkWinner(board, {
+  ruleset = RULESETS.HOUSE
+} = {}) {
   const winningCombos = [];
   const winningLines = [];
+  const winningDetails = [];
 
   for (const win of WINNING_LINES) {
     const sq1 = board[win[0] - 1];
     const sq2 = board[win[1] - 1];
     const sq3 = board[win[2] - 1];
 
-    if (typeof sq1 === "string" && sq1 === sq2 && sq2 === sq3) {
+    if (
+      typeof sq1 === "string" &&
+      classicalMarkOf(sq1) === classicalMarkOf(sq2) &&
+      classicalMarkOf(sq2) === classicalMarkOf(sq3)
+    ) {
       winningCombos.push(win);
-      winningLines.push(sq1.charAt(0));
+      winningLines.push(classicalMarkOf(sq1));
+      winningDetails.push({
+        mark: classicalMarkOf(sq1),
+        maxSubscript: Math.max(subscriptOf(sq1), subscriptOf(sq2), subscriptOf(sq3))
+      });
     }
   }
 
   return {
     winner: winningLines.length > 0,
     winningLines,
-    winningCombos
+    winningCombos,
+    winningDetails,
+    resolvedWinner: resolveWinnerFromDetails(winningDetails, ruleset)
   };
 }
 
-function checkIfOneSquareRemains(board, turn) {
+function checkIfOneSquareRemains(board, turn, {
+  ruleset = RULESETS.HOUSE
+} = {}) {
   let count = 0;
   let lastSquare = null;
 
@@ -150,7 +216,14 @@ function checkIfOneSquareRemains(board, turn) {
   }
 
   if (count === 1 && lastSquare !== null) {
-    board[lastSquare] = turn;
+    if (ruleset === RULESETS.GOFF && Array.isArray(board[lastSquare])) {
+      board[lastSquare] =
+        board[lastSquare].find(token => typeof token === "string" && token.startsWith(turn)) ??
+        board[lastSquare].find(token => typeof token === "string") ??
+        turn;
+    } else {
+      board[lastSquare] = turn;
+    }
   }
 
   return board;
@@ -177,7 +250,7 @@ function addQuantumSymbol(board, square, symbol) {
   return nextBoard;
 }
 
-function buildLocalState(previousState) {
+function buildLocalState(previousState, ruleset = getPreferredRuleset()) {
   const localName = getPlayerName();
   const opponentName =
     previousState?.players?.opponent?.name &&
@@ -194,6 +267,7 @@ function buildLocalState(previousState) {
       status: "starting",
       host: true,
       type: "local",
+      ruleset,
       countdownEndsAt: Date.now() + MATCH_START_DELAY_MS,
       role: "player",
       playerMark: "X"
@@ -215,6 +289,7 @@ function buildLocalState(previousState) {
     game: {
       board: initialBoard,
       cyclePath: null,
+      collapseChoices: null,
       turn: "X",
       winner: null,
       winningLine: null,
@@ -315,7 +390,11 @@ export function createLocalGameController() {
     clearStartTimeout();
     clearTimer();
 
-    const nextState = buildLocalState(getState());
+    const currentState = getState();
+    const ruleset = currentState.session.type === "local"
+      ? currentState.session.ruleset ?? getPreferredRuleset()
+      : getPreferredRuleset();
+    const nextState = buildLocalState(currentState, ruleset);
     setState(nextState);
     runtime.startTimeout = setTimeout(() => {
       runtime.startTimeout = null;
@@ -382,6 +461,15 @@ export function createLocalGameController() {
     const previousMove = runtime.moves[runtime.moves.length - 2];
     const cycleResult = checkForCycle(runtime.moves, cellIndex, previousMove.square, symbol);
     const nextTurn = mark === "X" ? "O" : "X";
+    const ruleset = state.session.ruleset ?? RULESETS.HOUSE;
+    const collapseChoices = cycleResult.cycleFound
+      ? ruleset === RULESETS.GOFF
+        ? existingSquares.map(choiceSquare => [choiceSquare, symbol])
+        : Array.from(new Map(cycleResult.cyclePath.map(([square, choiceSymbol]) => [
+            `${square}:${choiceSymbol}`,
+            [square, choiceSymbol]
+          ])).values())
+      : null;
 
     publish({
       ...state,
@@ -390,6 +478,7 @@ export function createLocalGameController() {
         board,
         turn: nextTurn,
         cyclePath: cycleResult.cycleFound ? cycleResult.cyclePath : null,
+        collapseChoices,
         nextAction: cycleResult.cycleFound ? "collapse" : "move"
       },
       boardHistory
@@ -407,8 +496,10 @@ export function createLocalGameController() {
       return "LOCKED";
     }
 
-    const collapsibleSquares = state.game.cyclePath.map(([square]) => square);
-    if (!collapsibleSquares.includes(cellIndex)) {
+    const collapseChoices = Array.isArray(state.game.collapseChoices)
+      ? state.game.collapseChoices
+      : [];
+    if (!collapseChoices.some(([square, choiceSymbol]) => square === cellIndex && choiceSymbol === symbol)) {
       return "LOCKED";
     }
 
@@ -416,17 +507,21 @@ export function createLocalGameController() {
       runtime.symbolIndex,
       cloneBoard(state.game.board),
       cellIndex,
-      symbol
+      symbol,
+      { ruleset: state.session.ruleset ?? RULESETS.HOUSE }
     );
 
-    const finalBoard = checkIfOneSquareRemains(collapsedBoard, state.game.turn);
-    const winnerResult = checkWinner(finalBoard);
+    const finalBoard = checkIfOneSquareRemains(collapsedBoard, state.game.turn, {
+      ruleset: state.session.ruleset ?? RULESETS.HOUSE
+    });
+    const winnerResult = checkWinner(finalBoard, {
+      ruleset: state.session.ruleset ?? RULESETS.HOUSE
+    });
     const boardHistory = [...cloneBoardHistory(state.boardHistory), cloneBoard(finalBoard)];
 
     let winner = null;
     if (winnerResult.winningLines.length) {
-      const firstWinner = winnerResult.winningLines[0];
-      winner = winnerResult.winningLines.every(line => line === firstWinner) ? firstWinner : "draw";
+      winner = winnerResult.resolvedWinner ?? "draw";
     }
 
     publish({
@@ -439,6 +534,7 @@ export function createLocalGameController() {
         ...state.game,
         board: finalBoard,
         cyclePath: null,
+        collapseChoices: null,
         winner,
         winningLine: winner ? winnerResult.winningCombos : null,
         nextAction: winner ? "winner" : "move"

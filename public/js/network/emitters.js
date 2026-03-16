@@ -1,6 +1,7 @@
 import {
   getRoomId,
   getPlayerName,
+  getPreferredRuleset,
   setMark,
   handleServerStateUpdate,
 } from "../game/state.js";
@@ -20,6 +21,7 @@ export function createEmitter()
       return withAck("createRoom", {
         roomName,
         type: "mp",
+        ruleset: getPreferredRuleset(),
         name: getPlayerName()
       });
     },
@@ -28,7 +30,10 @@ export function createEmitter()
     {
       try
       {
-      const ack = await withAck("joinReadyRoom", { requestedRoomType: "mp" });
+      const ack = await withAck("joinReadyRoom", {
+        requestedRoomType: "mp",
+        ruleset: getPreferredRuleset()
+      });
       if (ack?.mark) {
         setMark(ack.mark);
       }

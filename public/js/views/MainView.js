@@ -1,4 +1,5 @@
 import { View } from "./View.js";
+import { getPreferredRuleset } from "../game/state.js";
 
 export class MainView extends View {
   constructor(props, state) {
@@ -33,12 +34,60 @@ export class MainView extends View {
 
     this.buildNameCard(actions);
     this.buildPlatformStatusCard(actions);
+    this.buildRulesCard(actions);
     this.buildActionCard(actions);
     this.buildJoinCard(actions);
     this.buildActiveGamesCard(actions);
     if (this.appConfig.devMode) {
       this.buildDevAdminCard(actions);
     }
+  }
+
+  buildRulesCard(parent) {
+    const card = this.addElement("section", { class: "main-card" }, parent);
+    const selectedRuleset = getPreferredRuleset();
+
+    this.addElement("h2", {
+      class: "main-card-title",
+      textContent: "Ruleset"
+    }, card);
+
+    this.addElement("p", {
+      class: "main-card-copy",
+      textContent: "Choose the default ruleset for local games and newly created multiplayer rooms."
+    }, card);
+
+    const buttons = this.addElement("div", { class: "main-button-stack" }, card);
+    const rulesets = [
+      {
+        id: "house",
+        label: "House rules",
+        copy: "Flexible collapse choice with your current QM-inspired resolution."
+      },
+      {
+        id: "goff",
+        label: "Allan Goff",
+        copy: "Published two-outcome cycle measurement mode."
+      }
+    ];
+
+    const buttonEls = [];
+
+    rulesets.forEach(ruleset => {
+      const button = this.addElement("button", {
+        type: "button",
+        class: `main-secondary-button ${selectedRuleset === ruleset.id ? "is-selected" : ""}`,
+        textContent: `${ruleset.label} - ${ruleset.copy}`
+      }, buttons);
+
+      button.addEventListener("click", () => {
+        this.action.handleButtonAction({ type: "SET_RULESET", ruleset: ruleset.id });
+        buttonEls.forEach(el => el.classList.remove("is-selected"));
+        button.classList.add("is-selected");
+      }, { signal: this.domListenersAbort.signal });
+
+      buttonEls.push(button);
+    });
   }
 
   buildNameCard(parent) {

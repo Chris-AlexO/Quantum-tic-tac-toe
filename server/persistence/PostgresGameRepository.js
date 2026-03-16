@@ -114,11 +114,12 @@ export class PostgresGameRepository {
     await this.pool.query(
       `
         INSERT INTO rooms (
-          id, room_type, status, host_player_id, current_turn, next_action, winner,
+          id, room_type, ruleset, status, host_player_id, current_turn, next_action, winner,
           snapshot_json, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::timestamptz, $10::timestamptz)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::timestamptz, $11::timestamptz)
         ON CONFLICT (id) DO UPDATE SET
           room_type = EXCLUDED.room_type,
+          ruleset = EXCLUDED.ruleset,
           status = EXCLUDED.status,
           host_player_id = EXCLUDED.host_player_id,
           current_turn = EXCLUDED.current_turn,
@@ -130,6 +131,7 @@ export class PostgresGameRepository {
       [
         snapshot.session.roomId,
         snapshot.session.type,
+        snapshot.session.ruleset ?? "house",
         snapshot.session.status,
         snapshot.session.host ?? null,
         snapshot.game.turn ?? null,
@@ -302,7 +304,7 @@ export class PostgresGameRepository {
 
     const result = await this.pool.query(
       `
-        SELECT id, room_type, status, updated_at, snapshot_json
+        SELECT id, room_type, ruleset, status, updated_at, snapshot_json
         FROM rooms
         ORDER BY updated_at DESC
       `
@@ -319,6 +321,7 @@ export class PostgresGameRepository {
         SELECT
           id,
           room_type,
+          ruleset,
           status,
           host_player_id,
           current_turn,

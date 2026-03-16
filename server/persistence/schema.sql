@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS rooms (
   id TEXT PRIMARY KEY,
   room_type TEXT NOT NULL,
+  ruleset TEXT NOT NULL DEFAULT 'house',
   status TEXT NOT NULL,
   host_player_id TEXT,
   current_turn TEXT,
@@ -39,6 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_room_participants_room_id
 
 CREATE INDEX IF NOT EXISTS idx_rooms_status_updated_at
   ON rooms(status, updated_at DESC);
+
+ALTER TABLE rooms
+  ADD COLUMN IF NOT EXISTS ruleset TEXT NOT NULL DEFAULT 'house';
 
 CREATE INDEX IF NOT EXISTS idx_rooms_snapshot_json
   ON rooms USING GIN(snapshot_json);

@@ -1,4 +1,9 @@
-import { getState, resetStateForMenu, setToastMessage } from "./game/state.js";
+import {
+  getState,
+  resetStateForMenu,
+  setPreferredRuleset,
+  setToastMessage
+} from "./game/state.js";
 
 export function createActions({emitter, router, localGame, appConfig}){
     let pendingBoardAction = false;
@@ -221,6 +226,15 @@ return {
             case "SAVE_NAME":
             ack = await emitter.sendPlayerName(action.name);
             if(ack) console.log("Name saved");
+            break;
+
+            case "SET_RULESET":
+            setPreferredRuleset(action.ruleset);
+            setToastMessage(
+              action.ruleset === "goff"
+                ? "Allan Goff rules selected for new games."
+                : "House rules selected for new games."
+            );
             break;
 
             case "REMATCH":

@@ -459,7 +459,8 @@ export class GameView extends View {
       this.buildSummaryMetaItem("Result", this.getResultLabel(state)),
       this.buildSummaryMetaItem("Phase", this.getPhaseLabel(state)),
       this.buildSummaryMetaItem("Role", state.session.role === "spectator" ? "Spectator" : "Player"),
-      this.buildSummaryMetaItem("Room", state.session.type === "local" ? "Local match" : "Live room")
+      this.buildSummaryMetaItem("Room", state.session.type === "local" ? "Local match" : "Live room"),
+      this.buildSummaryMetaItem("Rules", state.session.ruleset === "goff" ? "Allan Goff" : "House")
     );
 
     const rematchState = state.session.rematchRequest;

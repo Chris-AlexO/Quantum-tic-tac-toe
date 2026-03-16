@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { checkWinner, updateBoard } from "../server/game/gameLogic.js";
+import C from "../server/game/constants.js";
 import Room from "../server/game/Room.js";
 import Player from "../server/game/Player.js";
 import RoomManager from "../server/game/RoomManager.js";
@@ -132,4 +133,17 @@ test("room manager only counts rooms of the requested type for capacity checks",
   assert.equal(manager.getRoomCount({ type: "mp" }), 1);
   assert.equal(manager.getRoomCount({ type: "local" }), 1);
   assert.equal(manager.getRoomCount(), 2);
+});
+
+test("checkWinner uses Allan Goff tie-break when both players complete a line", () => {
+  const board = [
+    "X1", "X3", "X5",
+    "O2", "O4", "O6",
+    null, null, null
+  ];
+
+  const result = checkWinner(board, { ruleset: C.RULESETS.GOFF });
+
+  assert.equal(result.winner, true);
+  assert.equal(result.resolvedWinner, "X");
 });

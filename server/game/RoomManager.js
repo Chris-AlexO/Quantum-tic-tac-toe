@@ -261,14 +261,14 @@ export default class RoomManager {
       return session?.room ?? null;
     }
 
-    enqueueWaiting({ playerId, roomId, type = "mp" }) {
+    enqueueWaiting({ playerId, roomId, type = "mp", ruleset = "house" }) {
     // prevent duplicates
     this.waitQueue = this.waitQueue.filter(w => w.playerId !== playerId);
 
-    this.waitQueue.push({ playerId, roomId, type, createdAt: Date.now() });
+    this.waitQueue.push({ playerId, roomId, type, ruleset, createdAt: Date.now() });
   }
 
-  dequeueMatch({ exceptPlayerId, type = "mp" }) {
+  dequeueMatch({ exceptPlayerId, type = "mp", ruleset = "house" }) {
     const now = Date.now();
 
     // find first valid entry
@@ -277,6 +277,7 @@ export default class RoomManager {
 
       // skip wrong type
       if (w.type !== type) continue;
+      if ((w.ruleset ?? "house") !== ruleset) continue;
 
       // skip self
       if (w.playerId === exceptPlayerId) continue;
@@ -344,7 +345,7 @@ export default class RoomManager {
    * Call when a player clicks "Quick Match"
    * Returns: { kind: "JOIN", roomId, mark } or { kind: "WAIT", roomId, mark }
    */
-  quickMatch(player, { type = "mp" } = {}) {
+  quickMatch(player, { type = "mp", ruleset = "house" } = {}) {
       const existingRoom = this.getPlayerRoom(player);
       if (existingRoom) {
         const rec = this.playerIndex.get(player.playerId);
@@ -355,16 +356,16 @@ export default class RoomManager {
         };
       }
 
-      const match = this.dequeueMatch({ exceptPlayerId: player.playerId, type });
+      const match = this.dequeueMatch({ exceptPlayerId: player.playerId, type, ruleset });
 
       if (match) {
         return { kind: "JOIN", roomId: match.roomId, mark: "O" };
       }
 
-      const roomId = this.createRoom({ playerX: player, type, host: player.playerId });
+      const roomId = this.createRoom({ playerX: player, type, host: player.playerId, ruleset });
       if (!roomId) return null;
 
-      this.enqueueWaiting({ playerId: player.playerId, roomId, type });
+      this.enqueueWaiting({ playerId: player.playerId, roomId, type, ruleset });
       return { kind: "WAIT", roomId, mark: "X" };
     }
 

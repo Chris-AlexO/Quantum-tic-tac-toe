@@ -231,7 +231,7 @@ export class AdminView extends View {
 
       const meta = this.addElement("span", {
         class: "admin-item-meta",
-        textContent: `${room.roomType} • ${room.status} • ${formatUpdatedAt(room.updatedAt)}`
+        textContent: `${room.roomType} • ${room.ruleset === "goff" ? "goff" : "house"} • ${room.status} • ${formatUpdatedAt(room.updatedAt)}`
       }, button);
 
       const detail = this.addElement("span", {

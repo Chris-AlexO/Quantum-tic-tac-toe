@@ -13,6 +13,11 @@ const C = {
 
   PLAYER_MARKS: ["X", "O"],
 
+  RULESETS: {
+    HOUSE: "house",
+    GOFF: "goff"
+  },
+
   TIME: {
     TURN_SECONDS: 600,
     MATCH_START_DELAY_MS: 3_000,

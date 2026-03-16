@@ -228,6 +228,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
     sock.on("createRoom", async (data, ack) => {
       const roomName = data?.roomName ?? "";
       const type = data?.type ?? "mp";
+      const ruleset = data?.ruleset ?? C.RULESETS.HOUSE;
 
       const occupiedRoom = await getOccupiedRoomResponse();
       if (occupiedRoom) {
@@ -241,7 +242,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         });
       }
 
-      const roomId = roomManager.createRoom({ playerX: player, type });
+      const roomId = roomManager.createRoom({ playerX: player, type, roomName, ruleset });
 
       if (!roomId) {
         return ack?.({ status: "error", message: "couldn't create a room" });
@@ -283,7 +284,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
     });
 
     sock.on("joinReadyRoom", async (data, ack) => {
-      const { requestedRoomType } = data || {};
+      const { requestedRoomType, ruleset = C.RULESETS.HOUSE } = data || {};
       const occupiedRoom = await getOccupiedRoomResponse();
 
       if (occupiedRoom) {
@@ -302,7 +303,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
       }
 
       if (requestedRoomType === "local") {
-        const roomId = roomManager.createRoom({ playerX: player, type: "local" });
+        const roomId = roomManager.createRoom({ playerX: player, type: "local", ruleset });
         sock.join(roomId);
         void persistPresence(player, { roomId, role: "player", mark: "X" });
         void persistRoom(roomManager.getRoom(roomId));
@@ -314,7 +315,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         });
       }
 
-      const { kind, roomId } = roomManager.quickMatch(player);
+      const { kind, roomId } = roomManager.quickMatch(player, { type: "mp", ruleset });
       const room = roomManager.getRoom(roomId);
 
       if (kind === "JOIN") {
@@ -449,6 +450,14 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
 
   if (cycleResult.cycleFound) {
     game.setCyclePath(cycleResult.cyclePath);
+    game.setCollapseChoices(
+      room.ruleset === C.RULESETS.GOFF
+        ? existingSquares.map(choiceSquare => [choiceSquare, symbol])
+        : Array.from(new Map(cycleResult.cyclePath.map(([square, choiceSymbol]) => [
+            `${square}:${choiceSymbol}`,
+            [square, choiceSymbol]
+          ])).values())
+    );
     game.setNextAction("collapse");
 
     io.to(getRoomChannelId(room)).emit("cycleFound", {
@@ -489,6 +498,13 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         });
       }
 
+      const collapseChoices = Array.isArray(game.getCollapseChoices?.())
+        ? game.getCollapseChoices()
+        : [];
+      if (!collapseChoices.some(([choiceSquare, choiceSymbol]) => choiceSquare === square && choiceSymbol === playerSymbol)) {
+        return ack?.({ status: "error", message: "That collapse choice is not valid" });
+      }
+
       const symbolIndex = game.getSymbolIndex();
       const turn = game.getTurn();
 
@@ -496,23 +512,25 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         symbolIndex,
         board.getBoardArray(),
         square,
-        playerSymbol
+        playerSymbol,
+        { ruleset: room.ruleset }
       );
 
-      const finalBoard = gameLogic.checkIfOneSquareRemains(collapsedBoard, turn);
+      const finalBoard = gameLogic.checkIfOneSquareRemains(collapsedBoard, turn, {
+        ruleset: room.ruleset
+      });
       board.board = finalBoard;
 
-      const winnerResult = gameLogic.checkWinner(finalBoard);
+      const winnerResult = gameLogic.checkWinner(finalBoard, {
+        ruleset: room.ruleset
+      });
       game.appendBoard();
 
       const winningLines = winnerResult.winningLines;
       const winningCombos = winnerResult.winningCombos;
 
       if (winningLines.length) {
-        const first = winningLines[0];
-        const allEqual = winningLines.every(v => v === first);
-
-        game.setWinner(allEqual ? first : "draw");
+        game.setWinner(winnerResult.resolvedWinner ?? "draw");
         game.setWinningLine(winningCombos);
         game.setNextAction("winner");
         room.clearPendingRequests();
@@ -522,6 +540,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         game.setWinner(null);
         game.setNextAction("move");
         game.setCyclePath(null);
+        game.setCollapseChoices(null);
       }
 
       emitRoomState(room);

@@ -74,6 +74,7 @@ async function listAdminOverview() {
       ? rooms.map(room => ({
           id: room.id,
           roomType: room.room_type,
+          ruleset: room.ruleset,
           status: room.status,
           hostPlayerId: room.host_player_id,
           currentTurn: room.current_turn,
@@ -160,6 +161,7 @@ const app = createApp({
             .map(game => ({
               id: game.id,
               roomType: game.room_type,
+              ruleset: game.ruleset,
               status: game.status,
               updatedAt: game.updated_at,
               snapshot: game.snapshot_json

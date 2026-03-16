@@ -1,5 +1,23 @@
 import C from "./constants.js";
 
+function classicalMarkOf(token) {
+  return typeof token === "string" ? token.charAt(0) : null;
+}
+
+function subscriptOf(token) {
+  if (typeof token !== "string") return 0;
+  const match = token.match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function classicalizeToken(token, ruleset = C.RULESETS.HOUSE) {
+  if (ruleset === C.RULESETS.GOFF) {
+    return token;
+  }
+
+  return classicalMarkOf(token);
+}
+
 function getTwinIndex(i) {
   return i % 2 === 0 ? i + 1 : i - 1;
 }
@@ -54,11 +72,11 @@ function checkForCycle(moves, bigSquare, bigSquareOfTwin, symbol) {
   return { cycleFound: false, cyclePath: null };
 }
 
-function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
+function collapseEntanglement(symbolIndex, board, square, playerSymbol, {
+  ruleset = C.RULESETS.HOUSE
+} = {}) {
   const collapsedSymbols = new Set();
-
-  const isClassical = (cell) => typeof cell === "string";
-  const classicalOf = (quantumToken) => quantumToken.charAt(0);
+  const isClassical = cell => typeof cell === "string";
 
   const stack = [{ currentSquare: square, currentSymbol: playerSymbol }];
 
@@ -84,8 +102,7 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
       stack.push({ currentSquare: twinToCheck, currentSymbol: symbol });
     }
 
-    board[currentSquare] =
-      currentSymbol.length > 1 ? classicalOf(currentSymbol) : currentSymbol;
+    board[currentSquare] = classicalizeToken(currentSymbol, ruleset);
 
     collapsedSymbols.add(currentSymbol);
   }
@@ -93,31 +110,65 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol) {
   return board;
 }
 
-function checkWinner(board) {
+function resolveWinnerFromDetails(winningDetails, ruleset = C.RULESETS.HOUSE) {
+  if (!winningDetails.length) {
+    return null;
+  }
+
+  const distinctMarks = new Set(winningDetails.map(detail => detail.mark));
+  if (distinctMarks.size === 1) {
+    return winningDetails[0].mark;
+  }
+
+  if (ruleset !== C.RULESETS.GOFF) {
+    return "draw";
+  }
+
+  const sorted = [...winningDetails].sort((a, b) => a.maxSubscript - b.maxSubscript);
+  if (!sorted[1] || sorted[0].maxSubscript !== sorted[1].maxSubscript) {
+    return sorted[0].mark;
+  }
+
+  return "draw";
+}
+
+function checkWinner(board, {
+  ruleset = C.RULESETS.HOUSE
+} = {}) {
   const winningCombos = [];
   const winningLines = [];
+  const winningDetails = [];
   let isWinner = false;
 
   for (const win of C.WINNING_LINES) {
     const sq1 = board[win[0] - 1];
     const sq2 = board[win[1] - 1];
     const sq3 = board[win[2] - 1];
+    const mark1 = classicalMarkOf(sq1);
+    const mark2 = classicalMarkOf(sq2);
+    const mark3 = classicalMarkOf(sq3);
 
     if (
       typeof sq1 === "string" &&
-      sq1 === sq2 &&
-      sq2 === sq3
+      mark1 === mark2 &&
+      mark2 === mark3
     ) {
       isWinner = true;
       winningCombos.push(win);
-      winningLines.push(sq1.charAt(0));
+      winningLines.push(mark1);
+      winningDetails.push({
+        mark: mark1,
+        maxSubscript: Math.max(subscriptOf(sq1), subscriptOf(sq2), subscriptOf(sq3))
+      });
     }
   }
 
   return {
     winner: isWinner,
     winningLines,
-    winningCombos
+    winningCombos,
+    winningDetails,
+    resolvedWinner: resolveWinnerFromDetails(winningDetails, ruleset)
   };
 }
 
@@ -136,7 +187,9 @@ function updateBoard(board, square, symbol) {
   return newBoard;
 }
 
-function checkIfOneSquareRemains(board, turn) {
+function checkIfOneSquareRemains(board, turn, {
+  ruleset = C.RULESETS.HOUSE
+} = {}) {
   let count = 0;
   let lastSquare = null;
 
@@ -148,7 +201,14 @@ function checkIfOneSquareRemains(board, turn) {
   }
 
   if (count === 1 && lastSquare !== null) {
-    board[lastSquare] = turn;
+    if (ruleset === C.RULESETS.GOFF && Array.isArray(board[lastSquare])) {
+      board[lastSquare] =
+        board[lastSquare].find(token => typeof token === "string" && token.startsWith(turn)) ??
+        board[lastSquare].find(token => typeof token === "string") ??
+        turn;
+    } else {
+      board[lastSquare] = turn;
+    }
   }
 
   return board;
