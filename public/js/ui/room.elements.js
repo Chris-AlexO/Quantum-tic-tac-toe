@@ -1,54 +1,69 @@
+export default function buildRoom() {
+  const root = createElement("div", "room");
+  const banner = createElement("div", "status-banner");
+  const sidebar = createElement("div", "sidebar");
 
-export default function buildRoom(){
-    const root = buildElement("div","room");
+  const me = buildPlayerDisplay();
+  const opponent = buildPlayerDisplay();
+  sidebar.append(me.root, opponent.root);
 
-    const sidebarDiv = buildElement("div", "sidebar"); //Will contain the players' info and a go back button
-    const mainTextDiv = buildElement("div", "status-banner");
+  root.append(banner, sidebar);
 
-    //maybe include host info
-    const meUI = buildPlayerDisplay();
-    const oppUI = buildPlayerDisplay();
-
-    sidebarDiv.append(meUI.root, oppUI.root);
-
-    root.append(mainTextDiv, sidebarDiv);
-    
-    return {r: root, me: meUI.elements, opp: oppUI.elements, mainText: mainTextDiv};
-
+  return {
+    r: root,
+    mainText: banner,
+    me: me.elements,
+    opp: opponent.elements
+  };
 }
 
+function buildPlayerDisplay() {
+  const root = createElement("div", "player-display-container");
+  const header = createElement("div", "player-card-header");
+  const badge = createElement("span", "player-mark-badge");
+  const label = createElement("p", "player-label");
+  header.append(badge, label);
 
-//Build each player icons in the side bar. Their name, picture, status, etc..
+  const name = createElement("p", "name");
 
-function buildPlayerDisplay(){
+  const chips = createElement("div", "player-chip-row");
+  const connectionStatus = createElement("p", "player-chip player-chip-status");
+  const mark = createElement("p", "player-chip player-chip-mark");
+  chips.append(connectionStatus, mark);
 
-    const root = buildElement("div", "player-display-container");
-    const elements = {};
+  const timerPanel = createElement("div", "player-timer-panel");
+  const timerLabel = createElement("p", "player-timer-label");
+  const time = createElement("p", "timer player-timer-value");
+  timerPanel.append(timerLabel, time);
 
-    elements.label = buildElement("p", "player-label");
-    elements.name = buildElement("p", "name");
-    elements.connectionStatus = buildElement("p", "meta");
-    elements.time = buildElement("p", "meta");
-    elements.mark = buildElement("p", "meta");
+  const elements = {
+    root,
+    header,
+    badge,
+    label,
+    name,
+    chips,
+    connectionStatus,
+    mark,
+    timerPanel,
+    timerLabel,
+    time
+  };
 
-    root.append(
-      elements.label,
-      elements.name,
-      elements.connectionStatus,
-      elements.time,
-      elements.mark
-    );
+  root.append(
+    header,
+    name,
+    chips,
+    timerPanel
+  );
 
-    return {root: root, elements: elements};
+  return { root, elements };
 }
 
-
-function buildElement(el, className){
-    const e = document.createElement(el);
-
-    if(className){
-        e.classList.add(className);
-    }
-
-    return e;
+function createElement(tagName, className) {
+  const element = document.createElement(tagName);
+  if (className) {
+    element.className = className;
+  }
+  return element;
 }

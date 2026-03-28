@@ -38,6 +38,7 @@ export class View {
       //this.router = props?.router || null;
 
       this.action = props.action || null;
+      this.emitter = props?.emitter || null;
       this.reciever = props?.reciever || null;
       this.dispatch = props.dispatch || null;
 

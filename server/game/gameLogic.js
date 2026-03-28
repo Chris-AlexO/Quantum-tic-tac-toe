@@ -110,6 +110,56 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol, {
   return board;
 }
 
+function buildTwinSquaresBySymbol(board) {
+  const twinSquaresBySymbol = new Map();
+
+  board.forEach((cell, square) => {
+    if (!Array.isArray(cell)) {
+      return;
+    }
+
+    cell.forEach(symbol => {
+      if (!symbol) {
+        return;
+      }
+
+      const squares = twinSquaresBySymbol.get(symbol) ?? [];
+      squares.push(square);
+      twinSquaresBySymbol.set(symbol, squares);
+    });
+  });
+
+  return twinSquaresBySymbol;
+}
+
+function buildCollapseChoices(board, cyclePath, ruleset, fallbackChoices) {
+  if (!Array.isArray(cyclePath)) {
+    return null;
+  }
+
+  if (ruleset === C.RULESETS.GOFF) {
+    return fallbackChoices;
+  }
+
+  const cycleSquares = new Set(cyclePath.map(([square]) => square));
+  const twinSquaresBySymbol = buildTwinSquaresBySymbol(board);
+  const collapseChoices = [];
+
+  twinSquaresBySymbol.forEach((squares, symbol) => {
+    if (
+      Array.isArray(squares) &&
+      squares.length === 2 &&
+      squares.every(square => cycleSquares.has(square))
+    ) {
+      squares.forEach(square => {
+        collapseChoices.push([square, symbol]);
+      });
+    }
+  });
+
+  return collapseChoices;
+}
+
 function resolveWinnerFromDetails(winningDetails, ruleset = C.RULESETS.HOUSE) {
   if (!winningDetails.length) {
     return null;
@@ -250,6 +300,7 @@ function validateMove(game, cell, mark) {
 }
 
 export {
+  buildCollapseChoices,
   checkForCycle,
   collapseEntanglement,
   checkWinner,

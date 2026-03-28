@@ -35,6 +35,7 @@ export default class Room {
         this.countdownEndsAt = null;
         this.pendingRematch = null;
         this.pendingDraw = null;
+        this.disconnectState = null;
     }
 
     startGame(onTimeout) {
@@ -44,10 +45,12 @@ export default class Room {
 
     this.clearCountdown();
     this.clearPendingRequests();
+    this.clearDisconnectState();
     this.status = C.ROOM_STATUS.PLAYING;
     this.game.updateNextAction("MOVE");
     this.game.startTimer(() => {
         this.clearPendingRequests();
+        this.clearDisconnectState();
         this.status = C.ROOM_STATUS.FINISHED;
         this.game.setNextAction("winner");
         this.game.setCyclePath(null);
@@ -89,6 +92,7 @@ export default class Room {
         this.game.stopTimer();
         this.clearCountdown();
         this.clearPendingRequests();
+        this.clearDisconnectState();
         this.game.reset();
         this.clientReady = {
             X: false,
@@ -102,6 +106,7 @@ export default class Room {
         if (this.countdownTimeout) return false;
 
         this.status = C.ROOM_STATUS.STARTING;
+        this.clearDisconnectState();
         this.countdownEndsAt = Date.now() + delayMs;
         this.countdownTimeout = setTimeout(() => {
             this.countdownTimeout = null;
@@ -119,6 +124,21 @@ export default class Room {
         this.countdownEndsAt = null;
     }
 
+    getDisconnectState() {
+        return this.disconnectState ? { ...this.disconnectState } : null;
+    }
+
+    setDisconnectState(mark, expiresAt) {
+        this.disconnectState = {
+            disconnectedMark: mark,
+            expiresAt
+        };
+    }
+
+    clearDisconnectState() {
+        this.disconnectState = null;
+    }
+
     isTimingOut(player){
         return this.timeouts[player.playerId] != null;
     }
@@ -127,9 +147,8 @@ export default class Room {
         if(this.timeouts[player.playerId] != null) return;
         this.timeouts[player.playerId] = setTimeout(() => {
             console.log(`${Date.now()} removing player ${player.playerId} (${player.getName()}) from room ${this.roomId}`);
-            this.endGame();
             callback();
-        }, 30000)
+        }, C.TIME.DISCONNECT_GRACE_MS)
     }
 
     //Emits recurring warning to room about timed out user
@@ -137,7 +156,7 @@ export default class Room {
         if(this.timeoutIntervals[player.playerId] != null) return;
         this.timeoutIntervals[player.playerId] = setInterval(() => {
             callback();
-            }, 1000);
+            }, C.TIME.TIMEOUT_WARNING_INTERVAL_MS);
     }
 
     startPlayerOfflineTimeout(player, callback){
@@ -158,6 +177,7 @@ export default class Room {
         delete this.timeouts[id];
         delete this.timeoutIntervals[id];
         delete this.playerOfflineTimeout[id];
+        this.clearDisconnectState();
     }   
 
     getId(){
@@ -398,6 +418,34 @@ export default class Room {
         this.status = C.ROOM_STATUS.FINISHED;
 
         return result;
+    }
+
+    forfeitPlayer(mark, reason = "leave") {
+        if (!["X", "O"].includes(mark)) {
+            return { status: "error", message: "Only active players can forfeit" };
+        }
+
+        const winnerMark = this.getOpponentMark(mark);
+        if (!winnerMark || !this.getPlayer(winnerMark)) {
+            return { status: "error", message: "An opponent is required for a forfeit result" };
+        }
+
+        this.game.stopTimer();
+        this.clearCountdown();
+        this.clearPendingRequests();
+        this.clearDisconnectState();
+        this.game.setWinner(winnerMark);
+        this.game.setNextAction("winner");
+        this.game.setCyclePath(null);
+        this.game.setCollapseChoices(null);
+        this.status = C.ROOM_STATUS.FINISHED;
+
+        return {
+            status: "ok",
+            winnerMark,
+            loserMark: mark,
+            reason
+        };
     }
 
 }

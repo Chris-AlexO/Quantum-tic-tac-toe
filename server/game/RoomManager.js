@@ -75,6 +75,75 @@ export default class RoomManager {
       return true;
 }
 
+    clearRoomReferences(room, {
+      playerId = null,
+      dropSeat = false,
+      clearSpectators = false
+    } = {}) {
+      if (!room) return false;
+
+      const targetPlayerId = playerId ?? null;
+      if (targetPlayerId) {
+        this.playerIndex.delete(targetPlayerId);
+        if (this.hostIndex.get(targetPlayerId) === room.roomId) {
+          this.hostIndex.delete(targetPlayerId);
+        }
+      } else {
+        for (const [indexedPlayerId, rec] of this.playerIndex.entries()) {
+          if (rec?.roomId === room.roomId) {
+            this.playerIndex.delete(indexedPlayerId);
+          }
+        }
+
+        for (const [indexedPlayerId, indexedRoomId] of this.hostIndex.entries()) {
+          if (indexedRoomId === room.roomId) {
+            this.hostIndex.delete(indexedPlayerId);
+          }
+        }
+      }
+
+      if (dropSeat) {
+        if (!targetPlayerId || room.players.X?.playerId === targetPlayerId) {
+          room.players.X = null;
+          room.clientReady.X = false;
+        }
+
+        if (!targetPlayerId || room.players.O?.playerId === targetPlayerId) {
+          room.players.O = null;
+          room.clientReady.O = false;
+        }
+
+        room.spectators = new Set(
+          Array.from(room.spectators ?? []).filter(spectator =>
+            targetPlayerId ? spectator?.playerId !== targetPlayerId : false
+          )
+        );
+      }
+
+      if (clearSpectators) {
+        room.spectators = new Set();
+      }
+
+      this.waitQueue = this.waitQueue.filter(w => w.roomId !== room.roomId && w.playerId !== targetPlayerId);
+      if (this.waitingPlayer?.roomId === room.roomId || this.waitingPlayer?.playerId === targetPlayerId) {
+        this.waitingPlayer = null;
+      }
+
+      return true;
+    }
+
+    shouldDeleteRoom(room) {
+      if (!room) return false;
+
+      for (const rec of this.playerIndex.values()) {
+        if (rec.roomId === room.roomId) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
     getRoom(roomId){
         return this.rooms.get(roomId);
     }

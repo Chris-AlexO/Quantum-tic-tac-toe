@@ -18,6 +18,7 @@ export function wireSocketToBus() {
   const onRematchRequested = payload => emit("room:rematch:requested", payload);
   const onRematchStatus = payload => emit("room:rematch:status", payload);
   const onPlayerOffline = (r) => emit("player:offline", r);
+  const onPlayerTimeoutWarning = payload => emit("player:timeout-warning", payload);
   const onPlayerLeft = (r) => emit("player:left", r);
   const onDisconnect = (r) => emit("net:disconnect", { reason: r });
 
@@ -34,6 +35,7 @@ export function wireSocketToBus() {
   sock.on("rematchRequested", onRematchRequested);
   sock.on("rematchStatus", onRematchStatus);
   sock.on("playerOffline", onPlayerOffline);
+  sock.on("playerTimeoutWarning", onPlayerTimeoutWarning);
   sock.on("playerLeft", onPlayerLeft);
   sock.on("disconnect", onDisconnect);
 
@@ -52,6 +54,7 @@ export function wireSocketToBus() {
     sock.off("rematchRequested", onRematchRequested);
     sock.off("rematchStatus", onRematchStatus);
     sock.off("playerOffline", onPlayerOffline);
+    sock.off("playerTimeoutWarning", onPlayerTimeoutWarning);
     sock.off("playerLeft", onPlayerLeft);
     sock.off("disconnect", onDisconnect);
   };

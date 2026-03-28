@@ -5,6 +5,7 @@ import RoomManager  from "./game/RoomManager.js";
 import { registerSocketHandlers } from "./socket/handlers.js";
 import { createGameRepository } from "./persistence/createGameRepository.js";
 
+
 const repository = createGameRepository();
 const databaseStatus = {
   available: false,
@@ -28,7 +29,9 @@ async function refreshDatabaseStatus() {
       return;
     }
 
+
     await repository.ping();
+    
 
     databaseStatus.available = true;
     databaseStatus.message = "PostgreSQL online";
@@ -81,6 +84,7 @@ async function listAdminOverview() {
           nextAction: room.next_action,
           winner: room.winner,
           updatedAt: room.updated_at,
+          expiresAt: room.expires_at,
         }))
       : [],
     players: Array.isArray(players)
@@ -112,7 +116,6 @@ async function getAdminRoom(roomId) {
     snapshot
   };
 }
-
 async function getAdminPlayer(playerId) {
   if (typeof repository.getPlayerPresence !== "function") {
     return null;
@@ -137,7 +140,64 @@ async function getAdminPlayer(playerId) {
   };
 }
 
+async function runRoomExpiryJob() {
+  if (typeof repository.deleteExpiredRooms !== "function") {
+    return {
+      deletedRoomCount: 0,
+      deletedRoomIds: [],
+    };
+  }
+
+  return (
+    await runRepositoryTask(() => repository.deleteExpiredRooms())
+  ) ?? {
+    deletedRoomCount: 0,
+    deletedRoomIds: [],
+  };
+}
+
+async function clearAdminDatabase() {
+  if (typeof repository.clearAllData !== "function") {
+    return { status: "unsupported" };
+  }
+
+  return (
+    await runRepositoryTask(() => repository.clearAllData())
+  ) ?? { status: "error" };
+}
+
+async function loadLocalGameSnapshot(playerId) {
+  if (typeof repository.getLocalGameSnapshot !== "function") {
+    return null;
+  }
+
+  return await runRepositoryTask(() => repository.getLocalGameSnapshot(playerId));
+}
+
+async function saveLocalGameSnapshot(playerId, payload) {
+  if (typeof repository.saveLocalGameSnapshot !== "function") {
+    return { status: "unsupported" };
+  }
+
+  return (
+    await runRepositoryTask(() => repository.saveLocalGameSnapshot(playerId, payload))
+  ) ?? { status: "error" };
+}
+
+async function clearLocalGameSnapshot(playerId) {
+  if (typeof repository.clearLocalGameSnapshot !== "function") {
+    return { status: "unsupported" };
+  }
+
+  return (
+    await runRepositoryTask(() => repository.clearLocalGameSnapshot(playerId))
+  ) ?? { status: "error" };
+}
+
+
 await refreshDatabaseStatus();
+
+
 setInterval(refreshDatabaseStatus, 10000).unref();
 
 const app = createApp({
@@ -164,14 +224,20 @@ const app = createApp({
               ruleset: game.ruleset,
               status: game.status,
               updatedAt: game.updated_at,
+              expiresAt: game.expires_at,
               snapshot: game.snapshot_json
             }))
         : null
     );
   },
+  loadLocalGameSnapshot,
+  saveLocalGameSnapshot,
+  clearLocalGameSnapshot,
   getAdminOverview: listAdminOverview,
   getAdminRoom,
-  getAdminPlayer
+  getAdminPlayer,
+  runRoomExpiryJob,
+  clearAdminDatabase
 });
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: ["http://localhost:3000"] } });
@@ -188,6 +254,8 @@ registerSocketHandlers({
   repository,
   runRepositoryTask
 });
+
+
 
 server.listen(process.env.PORT || 3000, () => {
   console.log(`HTTP server listening on http://localhost:${process.env.PORT || 3000}`);

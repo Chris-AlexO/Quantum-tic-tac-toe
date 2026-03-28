@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   winner TEXT,
   snapshot_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
+  updated_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days')
 );
 
 CREATE TABLE IF NOT EXISTS players (
@@ -43,6 +44,21 @@ CREATE INDEX IF NOT EXISTS idx_rooms_status_updated_at
 
 ALTER TABLE rooms
   ADD COLUMN IF NOT EXISTS ruleset TEXT NOT NULL DEFAULT 'house';
+
+ALTER TABLE rooms
+  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
+UPDATE rooms
+SET expires_at = COALESCE(expires_at, created_at + INTERVAL '7 days', NOW() + INTERVAL '7 days');
+
+ALTER TABLE rooms
+  ALTER COLUMN expires_at SET DEFAULT (NOW() + INTERVAL '7 days');
+
+ALTER TABLE rooms
+  ALTER COLUMN expires_at SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_rooms_expires_at
+  ON rooms(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_rooms_snapshot_json
   ON rooms USING GIN(snapshot_json);

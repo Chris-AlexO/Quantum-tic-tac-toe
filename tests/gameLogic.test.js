@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkWinner, updateBoard } from "../server/game/gameLogic.js";
+import { buildCollapseChoices, checkWinner, updateBoard } from "../server/game/gameLogic.js";
 import C from "../server/game/constants.js";
 import Room from "../server/game/Room.js";
 import Player from "../server/game/Player.js";
@@ -146,4 +146,103 @@ test("checkWinner uses Allan Goff tie-break when both players complete a line", 
 
   assert.equal(result.winner, true);
   assert.equal(result.resolvedWinner, "X");
+});
+
+test("buildCollapseChoices includes both placements of each house-rules cycle symbol", () => {
+  const board = [
+    ["X1", "O2", null, null, null, null, null, null, null],
+    ["X1", "X3", null, null, null, null, null, null, null],
+    ["O2", "X3", null, null, null, null, null, null, null],
+    Array.from({ length: 9 }, () => null),
+    Array.from({ length: 9 }, () => null),
+    Array.from({ length: 9 }, () => null),
+    Array.from({ length: 9 }, () => null),
+    Array.from({ length: 9 }, () => null),
+    Array.from({ length: 9 }, () => null)
+  ];
+
+  const cyclePath = [
+    [2, "X3"],
+    [1, "X1"],
+    [0, "O2"]
+  ];
+
+  const collapseChoices = buildCollapseChoices(
+    board,
+    cyclePath,
+    C.RULESETS.HOUSE,
+    [[2, "X3"]]
+  );
+
+  assert.deepEqual(
+    collapseChoices,
+    [
+      [0, "X1"],
+      [1, "X1"],
+      [0, "O2"],
+      [2, "O2"],
+      [1, "X3"],
+      [2, "X3"]
+    ]
+  );
+});
+
+test("room forfeit awards the win to the opponent and finishes the match", () => {
+  const playerX = new Player("player-x", "socket-1", "Chris", "X");
+  const playerO = new Player("player-o", "socket-2", "Alex", "O");
+  const room = new Room({ playerX, playerO, type: "mp", host: playerX.playerId });
+
+  room.status = "playing";
+
+  const result = room.forfeitPlayer("X", "disconnect");
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.winnerMark, "O");
+  assert.equal(room.getStatus(), "finished");
+  assert.equal(room.getGame().winner, "O");
+  assert.equal(room.getGame().nextAction, "winner");
+});
+
+test("room manager clears cached room references for departed players", () => {
+  const manager = new RoomManager();
+  const playerX = new Player("player-x", "socket-1", "Chris", "X");
+  const playerO = new Player("player-o", "socket-2", "Alex", "O");
+
+  const roomId = manager.createRoom({ playerX, type: "mp", host: playerX.playerId });
+  const room = manager.getRoom(roomId);
+  room.addSecondPlayer(playerO);
+  manager.addPlayerToRoom(playerO, room, "O");
+
+  manager.clearRoomReferences(room, { playerId: playerX.playerId, dropSeat: true });
+
+  assert.equal(manager.getPlayerRoom(playerX), undefined);
+  assert.equal(manager.hostIndex.has(playerX.playerId), false);
+  assert.equal(room.getPlayer("X"), null);
+  assert.equal(manager.getPlayerRoom(playerO)?.roomId, roomId);
+});
+
+test("quick match joins an existing waiting room for the same ruleset", () => {
+  const manager = new RoomManager();
+  const playerX = new Player("player-x", "socket-1", "Chris", "X");
+  const playerO = new Player("player-o", "socket-2", "Alex", "O");
+
+  const first = manager.quickMatch(playerX, { type: "mp", ruleset: C.RULESETS.HOUSE });
+  const second = manager.quickMatch(playerO, { type: "mp", ruleset: C.RULESETS.HOUSE });
+
+  assert.equal(first.kind, "WAIT");
+  assert.equal(second.kind, "JOIN");
+  assert.equal(second.roomId, first.roomId);
+});
+
+test("quick match keeps rulesets separate when finding a waiting room", () => {
+  const manager = new RoomManager();
+  const playerX = new Player("player-x", "socket-1", "Chris", "X");
+  const playerO = new Player("player-o", "socket-2", "Alex", "O");
+
+  const first = manager.quickMatch(playerX, { type: "mp", ruleset: C.RULESETS.GOFF });
+  const second = manager.quickMatch(playerO, { type: "mp", ruleset: C.RULESETS.HOUSE });
+
+  assert.equal(first.kind, "WAIT");
+  assert.equal(second.kind, "WAIT");
+  assert.notEqual(second.roomId, first.roomId);
 });

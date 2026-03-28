@@ -5,6 +5,18 @@ export class NoopGameRepository {
 
   clearPlayerPresence() {}
 
+  saveLocalGameSnapshot() {
+    return { status: "noop" };
+  }
+
+  getLocalGameSnapshot() {
+    return null;
+  }
+
+  clearLocalGameSnapshot() {
+    return { status: "noop" };
+  }
+
   getRoomSnapshot() {
     return null;
   }

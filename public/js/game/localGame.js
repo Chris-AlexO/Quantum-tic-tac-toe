@@ -145,6 +145,56 @@ function collapseEntanglement(symbolIndex, board, square, playerSymbol, {
   return board;
 }
 
+function buildTwinSquaresBySymbol(board) {
+  const twinSquaresBySymbol = new Map();
+
+  board.forEach((cell, square) => {
+    if (!Array.isArray(cell)) {
+      return;
+    }
+
+    cell.forEach(symbol => {
+      if (!symbol) {
+        return;
+      }
+
+      const squares = twinSquaresBySymbol.get(symbol) ?? [];
+      squares.push(square);
+      twinSquaresBySymbol.set(symbol, squares);
+    });
+  });
+
+  return twinSquaresBySymbol;
+}
+
+function buildCollapseChoices(board, cyclePath, ruleset, fallbackChoices) {
+  if (!Array.isArray(cyclePath)) {
+    return null;
+  }
+
+  if (ruleset === RULESETS.GOFF) {
+    return fallbackChoices;
+  }
+
+  const cycleSquares = new Set(cyclePath.map(([square]) => square));
+  const twinSquaresBySymbol = buildTwinSquaresBySymbol(board);
+  const collapseChoices = [];
+
+  twinSquaresBySymbol.forEach((squares, symbol) => {
+    if (
+      Array.isArray(squares) &&
+      squares.length === 2 &&
+      squares.every(square => cycleSquares.has(square))
+    ) {
+      squares.forEach(square => {
+        collapseChoices.push([square, symbol]);
+      });
+    }
+  });
+
+  return collapseChoices;
+}
+
 function resolveWinnerFromDetails(winningDetails, ruleset = RULESETS.HOUSE) {
   if (!winningDetails.length) {
     return null;
@@ -299,11 +349,12 @@ function buildLocalState(previousState, ruleset = getPreferredRuleset()) {
   };
 }
 
-export function createLocalGameController() {
+export function createLocalGameController({ appConfig = null, reciever = null } = {}) {
   const runtime = {
     moves: [],
     symbolIndex: new Map(),
-    startTimeout: null
+    startTimeout: null,
+    lastPersistedSnapshot: null
   };
 
   function clearTimer() {
@@ -319,6 +370,174 @@ export function createLocalGameController() {
       clearTimeout(runtime.startTimeout);
       runtime.startTimeout = null;
     }
+  }
+
+  function canPersist() {
+    return Boolean(
+      appConfig?.dbAvailable &&
+      reciever?.getLocalGameSnapshot &&
+      reciever?.saveLocalGameSnapshot &&
+      reciever?.clearLocalGameSnapshot
+    );
+  }
+
+  function snapshotStateForPersistence(sourceState) {
+    return {
+      session: {
+        ...sourceState.session,
+      },
+      players: {
+        me: { ...sourceState.players.me },
+        opponent: { ...sourceState.players.opponent },
+      },
+      game: {
+        ...sourceState.game,
+        board: cloneBoard(sourceState.game.board),
+        cyclePath: Array.isArray(sourceState.game.cyclePath)
+          ? sourceState.game.cyclePath.map(step => [...step])
+          : sourceState.game.cyclePath,
+        collapseChoices: Array.isArray(sourceState.game.collapseChoices)
+          ? sourceState.game.collapseChoices.map(step => [...step])
+          : sourceState.game.collapseChoices,
+        winningLine: Array.isArray(sourceState.game.winningLine)
+          ? sourceState.game.winningLine.map(line => (Array.isArray(line) ? [...line] : line))
+          : sourceState.game.winningLine
+      },
+      boardHistory: cloneBoardHistory(sourceState.boardHistory ?? []),
+    };
+  }
+
+  function buildPersistedSnapshot(sourceState = getState()) {
+    return {
+      version: 1,
+      state: snapshotStateForPersistence(sourceState),
+      runtime: {
+        moves: runtime.moves.map(move => ({ ...move })),
+        symbolIndex: Array.from(runtime.symbolIndex.entries()).map(([symbol, squares]) => [
+          symbol,
+          Array.isArray(squares) ? [...squares] : []
+        ])
+      }
+    };
+  }
+
+  async function persistCurrentState(sourceState = getState()) {
+    if (!canPersist()) {
+      runtime.lastPersistedSnapshot = null;
+      return null;
+    }
+
+    const snapshot = buildPersistedSnapshot(sourceState);
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === runtime.lastPersistedSnapshot) {
+      return true;
+    }
+
+    try {
+      await reciever.saveLocalGameSnapshot({
+        playerName: getPlayerName(),
+        snapshot
+      });
+      runtime.lastPersistedSnapshot = serialized;
+      return true;
+    } catch {
+      runtime.lastPersistedSnapshot = null;
+      return null;
+    }
+  }
+
+  async function clearPersistedState() {
+    runtime.lastPersistedSnapshot = null;
+    if (!canPersist()) {
+      return null;
+    }
+
+    try {
+      return await reciever.clearLocalGameSnapshot();
+    } catch {
+      return null;
+    }
+  }
+
+  function applyRestoredState(snapshot) {
+    const restoredState = snapshot?.state;
+    if (!restoredState?.session || restoredState.session.type !== "local") {
+      return false;
+    }
+
+    runtime.moves = Array.isArray(snapshot?.runtime?.moves)
+      ? snapshot.runtime.moves.map(move => ({ ...move }))
+      : [];
+    runtime.symbolIndex = new Map(
+      Array.isArray(snapshot?.runtime?.symbolIndex)
+        ? snapshot.runtime.symbolIndex.map(([symbol, squares]) => [
+            symbol,
+            Array.isArray(squares) ? [...squares] : []
+          ])
+        : []
+    );
+
+    clearStartTimeout();
+    clearTimer();
+
+    setState({
+      ...restoredState,
+      session: {
+        ...restoredState.session,
+        type: "local"
+      },
+      ui: {
+        ...getState().ui,
+        historyIndex: null,
+        toastMessage: null,
+        modalMessage: null,
+        rematchPrompt: null
+      },
+      timeInterval: null
+    });
+
+    const liveState = getState();
+    if (liveState.session.status === "starting") {
+      const remainingCountdown = Math.max(0, (liveState.session.countdownEndsAt ?? Date.now()) - Date.now());
+
+      if (remainingCountdown === 0) {
+        setState({
+          ...liveState,
+          session: {
+            ...liveState.session,
+            status: "playing",
+            countdownEndsAt: null
+          }
+        });
+        ensureTimer();
+        void persistCurrentState(getState());
+      } else {
+        runtime.startTimeout = setTimeout(() => {
+          runtime.startTimeout = null;
+          const refreshedState = getState();
+          if (refreshedState.session.type !== "local") return;
+
+          setState({
+            ...refreshedState,
+            session: {
+              ...refreshedState.session,
+              status: "playing",
+              countdownEndsAt: null
+            }
+          });
+          ensureTimer();
+          void persistCurrentState(getState());
+        }, remainingCountdown);
+      }
+
+      return true;
+    }
+
+    if (liveState.session.status === "playing") {
+      ensureTimer();
+    }
+
+    return true;
   }
 
   function finishOnTimeLosss(expiredMark) {
@@ -382,11 +601,13 @@ export function createLocalGameController() {
     } else {
       clearTimer();
     }
+    void persistCurrentState(getState());
   }
 
   function startMatch() {
     runtime.moves = [];
     runtime.symbolIndex = new Map();
+    runtime.lastPersistedSnapshot = null;
     clearStartTimeout();
     clearTimer();
 
@@ -396,6 +617,7 @@ export function createLocalGameController() {
       : getPreferredRuleset();
     const nextState = buildLocalState(currentState, ruleset);
     setState(nextState);
+    void persistCurrentState(nextState);
     runtime.startTimeout = setTimeout(() => {
       runtime.startTimeout = null;
       const liveState = getState();
@@ -410,7 +632,24 @@ export function createLocalGameController() {
         }
       });
       ensureTimer();
+      void persistCurrentState(getState());
     }, MATCH_START_DELAY_MS);
+  }
+
+  async function hydrateOrStart() {
+    if (canPersist()) {
+      try {
+        const payload = await reciever.getLocalGameSnapshot();
+        if (payload?.snapshot && applyRestoredState(payload.snapshot)) {
+          return "restored";
+        }
+      } catch {
+        // Fall through to a fresh local game when persistence is unavailable.
+      }
+    }
+
+    startMatch();
+    return "new";
   }
 
   function handleMove(state, cellIndex) {
@@ -463,12 +702,12 @@ export function createLocalGameController() {
     const nextTurn = mark === "X" ? "O" : "X";
     const ruleset = state.session.ruleset ?? RULESETS.HOUSE;
     const collapseChoices = cycleResult.cycleFound
-      ? ruleset === RULESETS.GOFF
-        ? existingSquares.map(choiceSquare => [choiceSquare, symbol])
-        : Array.from(new Map(cycleResult.cyclePath.map(([square, choiceSymbol]) => [
-            `${square}:${choiceSymbol}`,
-            [square, choiceSymbol]
-          ])).values())
+      ? buildCollapseChoices(
+          board,
+          cycleResult.cyclePath,
+          ruleset,
+          existingSquares.map(choiceSquare => [choiceSquare, symbol])
+        )
       : null;
 
     publish({
@@ -558,13 +797,19 @@ export function createLocalGameController() {
   }
 
   return {
+    hydrateOrStart,
     startMatch,
     restart: startMatch,
     rematch: startMatch,
     handleAction,
-    stop() {
+    stop({ clearPersisted = false } = {}) {
       clearStartTimeout();
       clearTimer();
+      if (clearPersisted) {
+        runtime.moves = [];
+        runtime.symbolIndex = new Map();
+        void clearPersistedState();
+      }
     }
   };
 }

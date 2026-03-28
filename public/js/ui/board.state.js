@@ -2,16 +2,29 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
   const svgNS = "http://www.w3.org/2000/svg";
   const showCollapseChoices = options.showCollapseChoices ?? true;
   const collapseChooser = options.collapseChooser ?? false;
+  const board = normalizeBoard(state?.game?.board);
   const cycleEntries = Array.isArray(state.game.cyclePath) ? state.game.cyclePath : [];
-  const cycleEntrySet = new Set(cycleEntries.map(([square, symbol]) => `${square}:${symbol}`));
   const cycleSquares = new Set(cycleEntries.map(([square]) => square));
+  const twinSquaresBySymbol = buildTwinSquaresBySymbol(board);
+  const cycleSymbols = getCycleSymbolsForSquares(twinSquaresBySymbol, cycleSquares);
+  const collapseChoiceKeys = new Set(
+    Array.isArray(state.game.collapseChoices)
+      ? state.game.collapseChoices.map(([square, symbol]) => `${square}:${symbol}`)
+      : []
+  );
+  const symbolPlacements = new Map();
+  const collapsePreviewByChoice = buildCollapsePreviewByChoice(
+    board,
+    twinSquaresBySymbol,
+    state.game.collapseChoices ?? state.game.cyclePath,
+    state.session.ruleset
+  );
+  const entanglementLayer = document.createElementNS(svgNS, "g");
+  entanglementLayer.setAttribute("class", "quantum-entanglement-layer");
+  svg.appendChild(entanglementLayer);
 
   function cellGroup(i) {
     return svg.querySelector(`g[data-idx="${i}"]`);
-  }
-
-  function littleCellGroup(i) {
-    return cellGroup(i)?.querySelectorAll("rect.board-little-cell-rect") ?? [];
   }
 
   function addClassic(cellIndex, player) {
@@ -40,6 +53,8 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
 
     const x = cellSize / 6 + (smallCellIndex % 3) * (cellSize / 3);
     const y = cellSize / 6 + Math.floor(smallCellIndex / 3) * (cellSize / 3);
+    const orbital = buildQuantumOrbital(svgNS, x, y, token);
+    orbital.dataset.cellIndex = String(cellIndex);
 
     const t = document.createElementNS(svgNS, "text");
     t.classList.add("quantum-symbol");
@@ -49,16 +64,47 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
     t.setAttribute("font-family", "\"Avenir Next\", \"Segoe UI\", sans-serif");
     t.setAttribute("font-weight", "600");
     t.setAttribute("fill", token.startsWith("X") ? "#60a5fa" : "#fb923c");
+    t.dataset.symbol = token;
+    t.dataset.cellIndex = String(cellIndex);
     t.textContent = token;
+    registerSymbolPlacement(symbolPlacements, token, {
+      square: cellIndex,
+      x: x + (cellIndex % 3) * cellSize,
+      y: y + Math.floor(cellIndex / 3) * cellSize
+    });
 
-    if (cycleEntrySet.has(`${cellIndex}:${token}`)) {
-      t.classList.add("cycle-involved-symbol");
-      t.classList.add(token.startsWith("X") ? "cycle-involved-symbol-x" : "cycle-involved-symbol-o");
-      if (state.game.nextAction === "collapse") {
-        t.classList.add("collapse-context-symbol");
+    if (cycleSymbols.size) {
+      if (cycleSymbols.has(token)) {
+        t.classList.add("cycle-involved-symbol");
+        t.classList.add(token.startsWith("X") ? "cycle-involved-symbol-x" : "cycle-involved-symbol-o");
+        if (state.game.nextAction === "collapse") {
+          t.classList.add("collapse-context-symbol");
+          if (collapseChoiceKeys.has(`${cellIndex}:${token}`)) {
+            t.classList.add("collapse-choice-symbol");
+          } else {
+            t.classList.add("collapse-passive-symbol");
+          }
+
+          if (collapseChooser && showCollapseChoices && collapseChoiceKeys.has(`${cellIndex}:${token}`)) {
+            clickables.push({
+              type: "COLLAPSE_SYMBOL_CLICK",
+              cellIndex: cellIndex,
+              symbol: token,
+              element: t,
+              hoverPreview: collapsePreviewByChoice.get(`${cellIndex}:${token}`) ?? null
+            });
+          }
+        }
+      } else {
+        t.classList.add("cycle-not-involved-symbol");
+        t.classList.add(token.startsWith("X") ? "cycle-not-involved-symbol-x" : "cycle-not-involved-symbol-o");
+        if (state.game.nextAction === "collapse") {
+          t.classList.add("collapse-outside-symbol");
+        }
       }
     }
 
+    qLayer.appendChild(orbital);
     qLayer.appendChild(t);
   }
 
@@ -73,7 +119,9 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
       if (!qLayer) continue;
 
       // Clear old quantum text on every render to avoid duplicates
-      qLayer.querySelectorAll(".quantum-symbol, .choosing-symbol, .collapse-choice").forEach(t => t.remove());
+      qLayer.querySelectorAll(
+        ".quantum-symbol, .choosing-symbol, .collapse-choice, .quantum-orbital"
+      ).forEach(t => t.remove());
 
       if (!Array.isArray(board[i])) {
         const rect = g.querySelector(".board-background-rect") || g.querySelector("rect");
@@ -136,8 +184,8 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
     const path = document.createElementNS(svgNS, "polyline");
     path.setAttribute("points", points);
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#d946ef");
-    path.setAttribute("stroke-width", "10");
+    path.setAttribute("stroke", "#f4f0f4ff");
+    path.setAttribute("stroke-width", "2");
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-dasharray", "18 14");
@@ -146,7 +194,6 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
     svg.appendChild(path);
 
     pth.forEach(([square, symbol]) => {
-      void symbol;
       const cx = cellSize / 2 + (square % 3) * cellSize;
       const cy = cellSize / 2 + Math.floor(square / 3) * cellSize;
 
@@ -155,8 +202,8 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
       circle.setAttribute("cy", cy);
       circle.setAttribute("r", String(cellSize * 0.11));
       circle.setAttribute("fill", "rgba(15, 23, 42, 0.92)");
-      circle.setAttribute("stroke", "#f0abfc");
-      circle.setAttribute("stroke-width", "3");
+      circle.setAttribute("stroke", "#f2ebf4ff");
+      circle.setAttribute("stroke-width", "1");
       circle.setAttribute("class", "cycle-path-node");
       svg.appendChild(circle);
     });
@@ -186,65 +233,11 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
       if (rect) {
         rect.classList.add("board-collapse-target");
       }
-
-      const squareChoices = Array.from(symbolMap.values());
-
-      squareChoices.forEach((choiceSymbol, choiceIndex) => {
-        const column = choiceIndex % 2;
-        const row = Math.floor(choiceIndex / 2);
-        const baseX = column === 0 ? cellSize * 0.16 : cellSize * 0.54;
-        const baseY = cellSize * (0.72 + row * 0.16);
-        const group = document.createElementNS(svgNS, "g");
-        group.classList.add("collapse-choice");
-        group.setAttribute(
-          "transform",
-          `translate(${baseX}, ${baseY})`
-        );
-
-        const pill = document.createElementNS(svgNS, "rect");
-        pill.setAttribute("width", String(cellSize * 0.3));
-        pill.setAttribute("height", String(cellSize * 0.14));
-        pill.setAttribute("rx", String(cellSize * 0.05));
-        pill.setAttribute("ry", String(cellSize * 0.05));
-        pill.setAttribute("fill", "rgba(15, 23, 42, 0.96)");
-        pill.setAttribute("stroke", "rgba(240, 171, 252, 0.82)");
-        pill.setAttribute("stroke-width", "2");
-
-        const text = document.createElementNS(svgNS, "text");
-        text.classList.add("choosing-symbol");
-        text.setAttribute("x", String(cellSize * 0.15));
-        text.setAttribute("y", String(cellSize * 0.07));
-        text.setAttribute("dominant-baseline", "middle");
-        text.setAttribute("text-anchor", "middle");
-        text.setAttribute("font-size", "16");
-        text.setAttribute("font-family", "\"Avenir Next\", \"Segoe UI\", sans-serif");
-        text.setAttribute("font-weight", "700");
-        text.setAttribute("fill", "#fdf4ff");
-        text.textContent = choiceSymbol;
-
-        group.append(pill, text);
-
-        if (collapseChooser) {
-          group.style.cursor = "pointer";
-          group.setAttribute("role", "button");
-          group.setAttribute("tabindex", "0");
-
-          clickables.push({
-            type: "COLLAPSE_SYMBOL_CLICK",
-            cellIndex: square,
-            symbol: choiceSymbol,
-            element: group
-          });
-        } else {
-          group.classList.add("collapse-choice-disabled");
-        }
-
-        qLayer.appendChild(group);
-      });
     }
   }
 
-  updateBoard(state.game.board);
+  updateBoard(board);
+  drawEntanglementLines();
 
   if (state.game.nextAction === "collapse") {
     showCollapsePath(state.game.cyclePath);
@@ -259,6 +252,36 @@ export function buildBoardState(svg, state, clickables, cellSize, options = {}) 
   }
 
   return { svg, clickables };
+
+  function drawEntanglementLines() {
+    for (const [symbol, placements] of symbolPlacements.entries()) {
+      if (!Array.isArray(placements) || placements.length !== 2) {
+        continue;
+      }
+
+      const [start, end] = placements;
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", buildEntanglementPath(start, end));
+      path.setAttribute("fill", "none");
+      path.setAttribute("class", [
+        "quantum-entanglement-line",
+        symbol.startsWith("X")
+          ? "quantum-entanglement-line-x"
+          : "quantum-entanglement-line-o",
+        cycleSymbols.has(symbol) ? "cycle-entanglement-line" : ""
+      ].filter(Boolean).join(" "));
+      path.dataset.symbol = symbol;
+      entanglementLayer.appendChild(path);
+    }
+  }
+}
+
+function normalizeBoard(board) {
+  if (Array.isArray(board) && board.length === 9) {
+    return board;
+  }
+
+  return Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => null));
 }
 
 function buildLine(points) {
@@ -280,5 +303,171 @@ function buildLine(points) {
   core.setAttribute("stroke-linejoin", "round");
 
   group.append(glow, core);
+  return group;
+}
+
+function buildCollapsePreviewByChoice(board, twinSquaresBySymbol, collapseChoices, ruleset) {
+  if (ruleset !== "house" || !Array.isArray(collapseChoices)) {
+    return new Map();
+  }
+
+  const previewByChoice = new Map();
+
+  collapseChoices.forEach(([square, symbol]) => {
+    previewByChoice.set(
+      `${square}:${symbol}`,
+      buildCollapsePreview(board, twinSquaresBySymbol, square, symbol)
+    );
+  });
+
+  return previewByChoice;
+}
+
+function buildTwinSquaresBySymbol(board) {
+  const twinSquaresBySymbol = new Map();
+
+  if (!Array.isArray(board)) {
+    return twinSquaresBySymbol;
+  }
+
+  board.forEach((cell, square) => {
+    if (!Array.isArray(cell)) {
+      return;
+    }
+
+    cell.forEach(symbol => {
+      if (!symbol) {
+        return;
+      }
+
+      const squares = twinSquaresBySymbol.get(symbol) ?? [];
+      squares.push(square);
+      twinSquaresBySymbol.set(symbol, squares);
+    });
+  });
+
+  return twinSquaresBySymbol;
+}
+
+function getCycleSymbolsForSquares(twinSquaresBySymbol, cycleSquares) {
+  const cycleSymbols = new Set();
+
+  twinSquaresBySymbol.forEach((squares, symbol) => {
+    if (
+      Array.isArray(squares) &&
+      squares.length === 2 &&
+      squares.every(square => cycleSquares.has(square))
+    ) {
+      cycleSymbols.add(symbol);
+    }
+  });
+
+  return cycleSymbols;
+}
+
+function buildCollapsePreview(board, twinSquaresBySymbol, square, symbol) {
+  const visitedSymbols = new Set();
+  const resolvedEntries = [];
+  const stack = [{ square, symbol, isOrigin: true }];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current?.symbol || visitedSymbols.has(current.symbol)) {
+      continue;
+    }
+
+    visitedSymbols.add(current.symbol);
+    resolvedEntries.push(current);
+
+    const cell = board[current.square];
+    if (!Array.isArray(cell)) {
+      continue;
+    }
+
+    cell.forEach(cellSymbol => {
+      if (!cellSymbol || cellSymbol === current.symbol || visitedSymbols.has(cellSymbol)) {
+        return;
+      }
+
+      const twinSquares = twinSquaresBySymbol.get(cellSymbol);
+      if (!Array.isArray(twinSquares)) {
+        return;
+      }
+
+      const twinSquare = twinSquares.find(candidateSquare => candidateSquare !== current.square);
+      if (typeof twinSquare !== "number") {
+        return;
+      }
+
+      stack.push({
+        square: twinSquare,
+        symbol: cellSymbol,
+        isOrigin: false
+      });
+    });
+  }
+
+  return {
+    originKey: `${square}:${symbol}`,
+    symbolKeys: resolvedEntries.map(entry => `${entry.square}:${entry.symbol}`),
+    lineSymbols: resolvedEntries.map(entry => entry.symbol)
+  };
+}
+
+function registerSymbolPlacement(symbolPlacements, symbol, placement) {
+  const placements = symbolPlacements.get(symbol) ?? [];
+  placements.push(placement);
+  symbolPlacements.set(symbol, placements);
+}
+
+function buildEntanglementPath(start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / distance;
+  const normalY = dx / distance;
+  const curveDepth = Math.min(34, Math.max(16, distance * 0.11));
+  const controlX = (start.x + end.x) / 2 + normalX * curveDepth;
+  const controlY = (start.y + end.y) / 2 + normalY * curveDepth;
+
+  return `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
+}
+
+function buildQuantumOrbital(svgNS, x, y, token) {
+  const group = document.createElementNS(svgNS, "g");
+  group.setAttribute("class", "quantum-orbital");
+  group.dataset.symbol = token;
+
+  const core = document.createElementNS(svgNS, "circle");
+  core.setAttribute("cx", x);
+  core.setAttribute("cy", y);
+  core.setAttribute("r", "8.5");
+  core.setAttribute(
+    "class",
+    `quantum-core ${token.startsWith("X") ? "quantum-core-x" : "quantum-core-o"}`
+  );
+
+  const orbitA = document.createElementNS(svgNS, "ellipse");
+  orbitA.setAttribute("cx", x);
+  orbitA.setAttribute("cy", y);
+  orbitA.setAttribute("rx", "16");
+  orbitA.setAttribute("ry", "8");
+  orbitA.setAttribute(
+    "class",
+    `quantum-orbit ${token.startsWith("X") ? "quantum-orbit-x" : "quantum-orbit-o"}`
+  );
+
+  const orbitB = document.createElementNS(svgNS, "ellipse");
+  orbitB.setAttribute("cx", x);
+  orbitB.setAttribute("cy", y);
+  orbitB.setAttribute("rx", "16");
+  orbitB.setAttribute("ry", "8");
+  orbitB.setAttribute(
+    "class",
+    `quantum-orbit ${token.startsWith("X") ? "quantum-orbit-x" : "quantum-orbit-o"}`
+  );
+  orbitB.setAttribute("transform", `rotate(58 ${x} ${y})`);
+
+  group.append(core, orbitA, orbitB);
   return group;
 }

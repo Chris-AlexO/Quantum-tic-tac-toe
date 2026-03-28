@@ -16,6 +16,23 @@ function formatUpdatedAt(value) {
   }).format(date);
 }
 
+function formatExpiry(value) {
+  if (!value) return "Not set";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
 function prettyJson(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -67,6 +84,7 @@ export class AdminView extends View {
     this.buildRoomsCard();
     this.buildPlayersCard();
     this.buildDetailCard();
+    this.buildMaintenanceCard();
     this.buildNavigationCard();
 
     await this.refreshOverview();
@@ -101,6 +119,45 @@ export class AdminView extends View {
 
     this.refreshButton.addEventListener("click", () => {
       this.refreshOverview();
+    }, { signal: this.domListenersAbort.signal });
+  }
+
+  buildMaintenanceCard() {
+    this.maintenanceCard = this.addElement("section", { class: "main-card" }, this.statusCard.parentElement);
+
+    this.addElement("h2", {
+      class: "main-card-title",
+      textContent: "Maintenance"
+    }, this.maintenanceCard);
+
+    this.addElement("p", {
+      class: "main-card-copy",
+      textContent: "Rooms now expire 7 days after creation. Run the expiry batch manually here, or clear persisted records while debugging. Live in-memory rooms can repopulate the database on their next sync."
+    }, this.maintenanceCard);
+
+    this.runExpiryButton = this.addElement("button", {
+      type: "button",
+      class: "main-primary-button",
+      textContent: "Run expiry job now"
+    }, this.maintenanceCard);
+
+    this.clearDbButton = this.addElement("button", {
+      type: "button",
+      class: "main-secondary-button admin-danger-button",
+      textContent: "Clear persisted DB values"
+    }, this.maintenanceCard);
+
+    this.maintenanceMessageEl = this.addElement("p", {
+      class: "main-card-copy",
+      textContent: "No maintenance actions run yet."
+    }, this.maintenanceCard);
+
+    this.runExpiryButton.addEventListener("click", async () => {
+      await this.runExpiryJob();
+    }, { signal: this.domListenersAbort.signal });
+
+    this.clearDbButton.addEventListener("click", async () => {
+      await this.clearDatabase();
     }, { signal: this.domListenersAbort.signal });
   }
 
@@ -236,7 +293,7 @@ export class AdminView extends View {
 
       const detail = this.addElement("span", {
         class: "admin-item-meta",
-        textContent: `Turn ${room.currentTurn || "-"} • Next ${room.nextAction || "-"} • Winner ${room.winner || "-"}`
+        textContent: `Turn ${room.currentTurn || "-"} • Next ${room.nextAction || "-"} • Expires ${formatExpiry(room.expiresAt)}`
       }, button);
 
       void title;
@@ -306,6 +363,51 @@ export class AdminView extends View {
       this.renderInspector();
     } catch (error) {
       this.renderInspector(error?.message || "Unable to inspect this room.");
+    }
+  }
+
+  async runExpiryJob() {
+    this.setMaintenanceMessage("Running expiry job.");
+
+    try {
+      const payload = await this.reciever.runAdminExpiryJob();
+      const deleted = payload?.result?.deletedRoomCount ?? 0;
+      this.setMaintenanceMessage(
+        deleted === 0
+          ? "Expiry job finished. No expired rooms were removed."
+          : `Expiry job finished. Removed ${deleted} expired room record${deleted === 1 ? "" : "s"}.`
+      );
+      await this.refreshOverview();
+    } catch (error) {
+      this.setMaintenanceMessage(error?.message || "Unable to run the expiry job.");
+    }
+  }
+
+  async clearDatabase() {
+    const confirmed = window.confirm(
+      "Clear all persisted room and player records from PostgreSQL? Live in-memory rooms may write themselves back on the next sync."
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.setMaintenanceMessage("Clearing persisted database values.");
+
+    try {
+      await this.reciever.clearAdminDatabase();
+      this.selectedRoomId = null;
+      this.selectedPlayerId = null;
+      this.selectedPayload = null;
+      this.setMaintenanceMessage("Persisted room and player records were cleared.");
+      await this.refreshOverview();
+    } catch (error) {
+      this.setMaintenanceMessage(error?.message || "Unable to clear persisted database values.");
+    }
+  }
+
+  setMaintenanceMessage(message) {
+    if (this.maintenanceMessageEl) {
+      this.maintenanceMessageEl.textContent = message;
     }
   }
 

@@ -1,12 +1,50 @@
 import {
+  hasSavedPlayerName,
+  getSavedPlayerName,
   getState,
   resetStateForMenu,
+  setPlayerName,
   setPreferredRuleset,
   setToastMessage
 } from "./game/state.js";
+import leoProfanity from "https://cdn.jsdelivr.net/npm/leo-profanity/+esm";
 
 export function createActions({emitter, router, localGame, appConfig}){
     let pendingBoardAction = false;
+
+    const refreshAppConfig = async () => {
+        try {
+          const response = await fetch("/healthz", {
+            headers: {
+              Accept: "application/json"
+            }
+          });
+          const payload = await response.json();
+          if (response.ok && payload) {
+            Object.assign(appConfig, payload);
+          }
+        } catch {
+          // Keep the last known config if health checks fail.
+        }
+
+        return appConfig;
+    };
+
+    const ensureMultiplayerReady = async () => {
+        await refreshAppConfig();
+
+        if (!appConfig?.multiplayerEnabled) {
+          setToastMessage("PostgreSQL is offline. Only local games are available.");
+          return false;
+        }
+
+        if (!hasSavedPlayerName()) {
+          setToastMessage("Save a clean player name before starting a multiplayer game.");
+          return false;
+        }
+
+        return true;
+    };
 
     const getActivePlayerSession = () => {
         const state = getState();
@@ -122,11 +160,34 @@ return {
         {
             case "MAIN_MENU":
             if (getState().session.type === "local") {
-                localGame.stop();
+                localGame.stop({ clearPersisted: true });
                 resetStateForMenu();
             }
             router.go("/");
             break;
+
+            case "LEAVE_GAME":
+            if (getState().session.type === "local") {
+                localGame.stop({ clearPersisted: true });
+                resetStateForMenu();
+                router.go("/");
+                return;
+            }
+
+            ack = await emitter.leaveGame({ forfeit: Boolean(action.forfeit) });
+            if (!ack) {
+                setToastMessage("Unable to leave the game right now.");
+                return;
+            }
+
+            if (ack.status === "confirm_forfeit") {
+                setToastMessage(ack.message || "Leaving now will forfeit the match.");
+                return;
+            }
+
+            resetStateForMenu();
+            router.go("/");
+            return;
             
             case "LOCAL_MATCH":
             if (!action.force) {
@@ -140,8 +201,7 @@ return {
             break;  
 
             case "QUICK_MATCH":
-            if (!appConfig?.multiplayerEnabled) {
-                setToastMessage("PostgreSQL is offline. Only local games are available.");
+            if (!await ensureMultiplayerReady()) {
                 return;
             }
             if (!action.force) {
@@ -151,25 +211,11 @@ return {
                     return;
                 }
             }
-            const quickMatchAck = await emitter.quickMatch();
-            if (!quickMatchAck) {
-                setToastMessage("Unable to find a room right now. Please try again.");
-                return;
-            }
-            if (quickMatchAck.message === "Player already in a room" || quickMatchAck.status === "occupied") {
-                handleOccupiedAck(quickMatchAck);
-                return;
-            }
-            if (quickMatchAck.status !== "ok" || !quickMatchAck.roomId) {
-                setToastMessage(quickMatchAck.message || "Unable to find a room right now. Please try again.");
-                return;
-            }
-            router.go(`/game/mp/${quickMatchAck.roomId}`);
+            router.go("/matchmaking");
             break;
 
             case "JOIN_MATCH":
-            if (!appConfig?.multiplayerEnabled) {
-                setToastMessage("PostgreSQL is offline. Only local games are available.");
+            if (!await ensureMultiplayerReady()) {
                 return;
             }
             if (!action.roomId) {
@@ -204,11 +250,12 @@ return {
                 return;
             }
             setToastMessage(action.message || "Finish your current match before starting another one.");
+            const navigate = action.replace ? router.replace.bind(router) : router.go.bind(router);
             if (action.local) {
-                router.go("/game/local");
+                navigate("/game/local");
                 return;
             }
-            router.go(`/game/mp/${action.roomId}`);
+            navigate(`/game/mp/${action.roomId}`);
             return;
 
             case "DEV_ADMIN":
@@ -216,16 +263,35 @@ return {
             break;
 
             case "ACTIVE_GAMES":
-            if (!appConfig?.multiplayerEnabled) {
-                setToastMessage("PostgreSQL is offline. Active games are unavailable.");
+            if (!await ensureMultiplayerReady()) {
                 return;
             }
             router.go("/games/active");
             break;
 
             case "SAVE_NAME":
-            ack = await emitter.sendPlayerName(action.name);
-            if(ack) console.log("Name saved");
+            {
+            const normalizedName = String(action.name || "").trim().replace(/\s+/g, " ");
+            if (!normalizedName) {
+                setToastMessage("Enter a player name before saving.");
+                return false;
+            }
+            if (leoProfanity.check(normalizedName)) {
+                setToastMessage("Choose a player name without profanity.");
+                return false;
+            }
+
+            const previousName = getSavedPlayerName();
+            setPlayerName(normalizedName);
+            ack = await emitter.sendPlayerName(normalizedName);
+            if (!ack) {
+                setPlayerName(previousName);
+                setToastMessage("Unable to save the player name right now.");
+                return false;
+            }
+            setToastMessage("Player name saved.");
+            return true;
+            }
             break;
 
             case "SET_RULESET":

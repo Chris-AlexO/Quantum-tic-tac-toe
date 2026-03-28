@@ -1,3 +1,10 @@
+
+
+Player refers to current client's user. Opponent refers to other client's user.
+
+Build functions create dom elements. Select functions are select.
+
+
 # Quantum Tic-Tac-Toe
 
 Quantum Tic-Tac-Toe with local play, live multiplayer rooms, spectators, rematch/draw handling, PostgreSQL-backed room tracking, and a development admin view for database inspection.

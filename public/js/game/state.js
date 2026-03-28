@@ -10,6 +10,7 @@ function createInitialState() {
       type: null,
       ruleset: null,
       countdownEndsAt: null,
+      disconnectState: null,
       role: "player",
       playerMark: "X",
       rematchRequest: null,
@@ -78,6 +79,9 @@ function cloneState() {
       drawRequest: state.session.drawRequest
         ? { ...state.session.drawRequest }
         : null,
+      disconnectState: state.session.disconnectState
+        ? { ...state.session.disconnectState }
+        : null,
       rematchRequest: state.session.rematchRequest
         ? { ...state.session.rematchRequest }
         : null
@@ -137,6 +141,7 @@ export function setState(newState) {
 }
 
 export function resetStateForMenu() {
+  sessionStorage.removeItem("roomId");
   return setState(createInitialState());
 }
 
@@ -171,6 +176,9 @@ function normalizeServerState(serverState, mark, role = mark ? "player" : "spect
       type: serverState.session.type,
       ruleset: serverState.session.ruleset ?? state.session.ruleset ?? getPreferredRuleset(),
       countdownEndsAt: serverState.session.countdownEndsAt ?? null,
+      disconnectState: serverState.session.disconnectState
+        ? { ...serverState.session.disconnectState }
+        : null,
       role,
       playerMark: isPlayer ? mark : null,
       drawRequest: serverState.session.drawRequest
@@ -292,6 +300,8 @@ export const setGameStatus = status =>
   });
 
 export const getPlayerName = () => localStorage.getItem("playerName") || state.players.me.name;
+export const getSavedPlayerName = () => (localStorage.getItem("playerName") || "").trim();
+export const hasSavedPlayerName = () => getSavedPlayerName().length > 0;
 export function getPreferredRuleset() {
   return localStorage.getItem("preferredRuleset") || "house";
 }
@@ -440,6 +450,19 @@ export const setHost = isHost =>
   });
 
 export const getHost = () => state.session.host;
+
+export const setDisconnectState = disconnectState =>
+  patchState({
+    session: {
+      ...state.session,
+      disconnectState: disconnectState
+        ? {
+            ...state.session.disconnectState,
+            ...disconnectState
+          }
+        : null
+    }
+  });
 
 export const setCyclePath = cyclePath =>
   patchState({

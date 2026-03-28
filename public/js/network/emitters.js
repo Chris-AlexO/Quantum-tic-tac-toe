@@ -3,7 +3,6 @@ import {
   getPlayerName,
   getPreferredRuleset,
   setMark,
-  handleServerStateUpdate,
 } from "../game/state.js";
 import { withAck } from "./withAck.js";
 
@@ -30,21 +29,14 @@ export function createEmitter()
     {
       try
       {
-      const ack = await withAck("joinReadyRoom", {
-        requestedRoomType: "mp",
-        ruleset: getPreferredRuleset()
-      });
-      if (ack?.mark) {
-        setMark(ack.mark);
-      }
-      if (ack?.state) {
-        handleServerStateUpdate(ack.state, ack.mark, ack.role ?? (ack.mark ? "player" : "spectator"));
-      }
-      return ack;
+        return await withAck("joinReadyRoom", {
+          requestedRoomType: "mp",
+          ruleset: getPreferredRuleset()
+        });
       }
       catch(err){
-      console.error("Join failed:", err);
-      return null;
+        console.error("Join failed:", err);
+        return null;
       }
     },
 
@@ -139,6 +131,15 @@ export function createEmitter()
         });
       } catch (err) {
         console.warn("Draw response failed:", err);
+        return null;
+      }
+    },
+
+    async leaveGame({ forfeit = false } = {}) {
+      try {
+        return await withAck("leaveGame", { roomId: getRoomId(), forfeit: Boolean(forfeit) });
+      } catch (err) {
+        console.warn("Leave game failed:", err);
         return null;
       }
     }

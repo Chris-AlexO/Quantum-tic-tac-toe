@@ -43,13 +43,13 @@ export class ActiveGamesView extends View {
 
     this.addElement("p", {
       class: "main-subtitle",
-      textContent: "These rooms are being read from PostgreSQL. Open one to join if it is waiting, or spectate if it is already in progress."
+      textContent: ""
     }, hero);
 
     this.listCard = this.addElement("section", { class: "main-card active-games-card" }, actions);
     this.addElement("h2", {
       class: "main-card-title",
-      textContent: "Database-backed room list"
+      textContent: "Room list"
     }, this.listCard);
 
     this.listBody = this.addElement("div", { class: "active-games-list" }, this.listCard);
@@ -57,7 +57,7 @@ export class ActiveGamesView extends View {
     this.navCard = this.addElement("section", { class: "main-card" }, actions);
     this.addElement("h2", {
       class: "main-card-title",
-      textContent: "Navigation"
+      textContent: ""
     }, this.navCard);
 
     const back = this.addElement("button", {
@@ -85,7 +85,7 @@ export class ActiveGamesView extends View {
     if (!this.games.length) {
       this.addElement("p", {
         class: "main-card-copy",
-        textContent: message || "No active rooms were returned from the database."
+        textContent: message || "No active rooms."
       }, this.listBody);
       return;
     }

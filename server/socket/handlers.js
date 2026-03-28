@@ -70,6 +70,63 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
 
     const resolvePlayerRoom = () => roomManager.resolvePlayerRoom(player);
     const resolvePlayerSession = () => roomManager.resolvePlayerSession(player);
+    const cleanupRoomIfAbandoned = room => {
+      if (roomManager.shouldDeleteRoom(room)) {
+        roomManager.deleteRoom(room);
+        return true;
+      }
+
+      return false;
+    };
+
+    const finalizePlayerDeparture = async ({ room, mark, reason = "leave", forfeit = false }) => {
+      if (!room) {
+        await clearPresence?.(player.playerId);
+        player.leaveRoom();
+        return { status: "ok", deletedRoom: false };
+      }
+
+      const roomId = getRoomChannelId(room);
+
+      if (forfeit) {
+        const forfeitResult = room.forfeitPlayer(mark, reason);
+        if (forfeitResult.status !== "ok") {
+          return forfeitResult;
+        }
+
+        player.setOffline();
+        player.leaveRoom();
+        roomManager.clearRoomReferences(room, { playerId: player.playerId, dropSeat: false });
+        await clearPresence?.(player.playerId);
+        sock.leave(roomId);
+
+        emitRoomState(room);
+        io.to(roomId).emit("playerLeft", {
+          mark,
+          reason,
+          winnerMark: forfeitResult.winnerMark
+        });
+
+        return { status: "ok", deletedRoom: false, winnerMark: forfeitResult.winnerMark };
+      }
+
+      player.leaveRoom();
+      player.setOffline();
+      roomManager.clearRoomReferences(room, {
+        playerId: player.playerId,
+        dropSeat: true
+      });
+      await clearPresence?.(player.playerId);
+      sock.leave(roomId);
+
+      const deletedRoom = cleanupRoomIfAbandoned(room);
+      if (!deletedRoom) {
+        emitRoomState(room);
+      }
+
+      return { status: "ok", deletedRoom };
+    };
+
     const getLivePlayerRoomState = async () => {
       const session = await resolvePlayerSession();
       if (!session?.room) {
@@ -196,7 +253,7 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
         role: "player",
         mark
       });
-      void persistRoom(room);
+      emitRoomState(room);
 
       return ack?.({
         status: "ok",
@@ -304,30 +361,49 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
 
       if (requestedRoomType === "local") {
         const roomId = roomManager.createRoom({ playerX: player, type: "local", ruleset });
+        const room = roomManager.getRoom(roomId);
         sock.join(roomId);
         void persistPresence(player, { roomId, role: "player", mark: "X" });
-        void persistRoom(roomManager.getRoom(roomId));
+        void persistRoom(room);
         return ack?.({
           status: "ok",
+          kind: "WAIT",
           roomId,
           mark: "X",
+          state: serializeRoomState(room),
           message: "Joined local"
         });
       }
 
-      const { kind, roomId } = roomManager.quickMatch(player, { type: "mp", ruleset });
+      const matchResult = roomManager.quickMatch(player, { type: "mp", ruleset });
+      if (!matchResult?.roomId) {
+        return ack?.({
+          status: "error",
+          message: "Unable to create or join a room right now"
+        });
+      }
+
+      const { kind, roomId } = matchResult;
       const room = roomManager.getRoom(roomId);
+      if (!room) {
+        return ack?.({
+          status: "error",
+          message: "Room not found"
+        });
+      }
 
       if (kind === "JOIN") {
         sock.join(roomId);
         roomManager.addPlayerToRoom(player, room, "O");
         void persistPresence(player, { roomId, role: "player", mark: "O" });
-        void persistRoom(room);
+        emitRoomState(room);
 
         return ack?.({
           roomId,
+          kind,
           status: "ok",
           mark: "O",
+          state: serializeRoomState(room),
           message: "joined room"
         });
       }
@@ -339,8 +415,10 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
 
         return ack?.({
           roomId,
+          kind,
           status: "ok",
           mark: "X",
+          state: serializeRoomState(room),
           message: "created room"
         });
       }
@@ -451,12 +529,12 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
   if (cycleResult.cycleFound) {
     game.setCyclePath(cycleResult.cyclePath);
     game.setCollapseChoices(
-      room.ruleset === C.RULESETS.GOFF
-        ? existingSquares.map(choiceSquare => [choiceSquare, symbol])
-        : Array.from(new Map(cycleResult.cyclePath.map(([square, choiceSymbol]) => [
-            `${square}:${choiceSymbol}`,
-            [square, choiceSymbol]
-          ])).values())
+      gameLogic.buildCollapseChoices(
+        board.getBoardArray(),
+        cycleResult.cyclePath,
+        room.ruleset,
+        existingSquares.map(choiceSquare => [choiceSquare, symbol])
+      )
     );
     game.setNextAction("collapse");
 
@@ -658,6 +736,40 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
       return ack?.({ status: "ok" });
     });
 
+    sock.on("leaveGame", async (payload, ack) => {
+      const room = await resolvePlayerRoom();
+      if (!room) {
+        await clearPresence?.(player.playerId);
+        player.leaveRoom();
+        return ack?.({ status: "ok", roomClosed: true });
+      }
+
+      const mark = room.getPlayerMark(player);
+      const shouldForfeit = Boolean(payload?.forfeit);
+      const hasOpponent = Boolean(mark && room.getPlayer(room.getOpponentMark(mark)));
+      const isActiveMatch = mark && ["waiting", "starting", "playing"].includes(room.getStatus()) && hasOpponent;
+
+      if (isActiveMatch && !shouldForfeit) {
+        return ack?.({
+          status: "confirm_forfeit",
+          message: "Leaving now will forfeit the match."
+        });
+      }
+
+      const result = await finalizePlayerDeparture({
+        room,
+        mark,
+        reason: shouldForfeit ? "leave" : "leave",
+        forfeit: Boolean(isActiveMatch && shouldForfeit)
+      });
+
+      return ack?.({
+        status: result.status,
+        roomClosed: Boolean(result.deletedRoom),
+        winnerMark: result.winnerMark ?? null
+      });
+    });
+
     sock.on("disconnect", async () => {
       console.log("disconnected:", sock.id, "player:", sock.playerId);
 
@@ -668,27 +780,48 @@ export function registerSocketHandlers({ io, roomManager, repository, runReposit
 
       const mark = room.getPlayerMark(player);
       const roomId = room.getId?.() ?? room.roomId;
+      const hasOpponent = Boolean(mark && room.getPlayer(room.getOpponentMark(mark)));
 
-      const playerOfflineCallback = () => {
-        player.setOffline();
-        void persistPresence(player, { roomId, role: mark ? "player" : "spectator", mark });
-        io.to(roomId).emit("playerOffline", { mark });
-        void persistRoom(room);
-        console.log(
-          `${Date.now()} someone disconnected: ${player.playerId}, they were in room ${roomId} as ${mark}`
-        );
-      };
+      if (!mark) {
+        await finalizePlayerDeparture({ room, mark: null, forfeit: false });
+        return;
+      }
 
-      const playerLeftCallback = () => {
-        io.to(roomId).emit("playerLeft", { mark });
-        void persistRoom(room);
+      if (!hasOpponent || room.getStatus() === C.ROOM_STATUS.FINISHED) {
+        await finalizePlayerDeparture({ room, mark, forfeit: false });
+        return;
+      }
+
+      room.setDisconnectState(mark, Date.now() + C.TIME.DISCONNECT_GRACE_MS);
+      player.setOffline();
+      void persistPresence(player, { roomId, role: "player", mark });
+      emitRoomState(room);
+      io.to(roomId).emit("playerOffline", {
+        mark,
+        expiresAt: room.getDisconnectState()?.expiresAt ?? null
+      });
+      console.log(
+        `${Date.now()} someone disconnected: ${player.playerId}, they were in room ${roomId} as ${mark}`
+      );
+
+      const playerLeftCallback = async () => {
+        await finalizePlayerDeparture({
+          room,
+          mark,
+          reason: "disconnect",
+          forfeit: true
+        });
       };
 
       const playerTimeoutWarningCallback = () => {
-        io.to(roomId).emit("playerTimeoutWarning", { mark });
+        const expiresAt = room.getDisconnectState()?.expiresAt ?? null;
+        const secondsRemaining = expiresAt
+          ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+          : 0;
+
+        io.to(roomId).emit("playerTimeoutWarning", { mark, expiresAt, secondsRemaining });
       };
 
-      room.startPlayerOfflineTimeout(player, playerOfflineCallback);
       room.startTimeout(player, playerLeftCallback);
       room.startTimeoutInterval(player, playerTimeoutWarningCallback);
       void persistRoom(room);

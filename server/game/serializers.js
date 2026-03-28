@@ -15,6 +15,7 @@ export function serializeRoomState(room) {
         ruleset: room.ruleset,
         status: room.status,
         countdownEndsAt: room.countdownEndsAt,
+        disconnectState: room.getDisconnectState(),
         rematchRequest: room.getRematchRequest(),
         drawRequest: room.getDrawRequest()
     },

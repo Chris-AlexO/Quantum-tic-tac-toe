@@ -9,16 +9,30 @@ function createApp({
   getAppConfig,
   refreshAppConfig,
   listActiveGames,
+  loadLocalGameSnapshot,
+  saveLocalGameSnapshot,
+  clearLocalGameSnapshot,
   getAdminOverview,
   getAdminRoom,
-  getAdminPlayer
+  getAdminPlayer,
+  runRoomExpiryJob,
+  clearAdminDatabase
 } = {}) {
   const app = express();
 
  const publicDir = path.join(__dirname, "..", "..", "public");
   const serverDir = path.join(__dirname, "..", "server")
 
+  app.use(express.json());
   app.use(express.static(publicDir));
+
+  const getPlayerIdFromRequest = req =>
+    String(
+      req.get("x-player-id") ??
+      req.query?.playerId ??
+      req.body?.playerId ??
+      ""
+    ).trim() || null;
 
   app.get("/app-config.js", async (_req, res) => {
     await refreshAppConfig?.();
@@ -68,6 +82,121 @@ function createApp({
         games: [],
         message: error?.message || "Unable to load active games",
         ...(getAppConfig?.() ?? {})
+      });
+    }
+  });
+
+  app.get("/api/local-game", async (req, res) => {
+    await refreshAppConfig?.();
+    const appConfig = getAppConfig?.() ?? {};
+
+    if (!appConfig.dbAvailable) {
+      return res.status(503).json({
+        ok: false,
+        message: appConfig.dbStatusText || "PostgreSQL is offline.",
+        ...appConfig
+      });
+    }
+
+    const playerId = getPlayerIdFromRequest(req);
+    if (!playerId) {
+      return res.status(400).json({
+        ok: false,
+        message: "Player id is required.",
+        ...appConfig
+      });
+    }
+
+    try {
+      const snapshot = await loadLocalGameSnapshot?.(playerId);
+      res.status(200).json({
+        ok: true,
+        snapshot: snapshot ?? null,
+        ...appConfig
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        message: error?.message || "Unable to load the local game snapshot.",
+        ...appConfig
+      });
+    }
+  });
+
+  app.put("/api/local-game", async (req, res) => {
+    await refreshAppConfig?.();
+    const appConfig = getAppConfig?.() ?? {};
+
+    if (!appConfig.dbAvailable) {
+      return res.status(503).json({
+        ok: false,
+        message: appConfig.dbStatusText || "PostgreSQL is offline.",
+        ...appConfig
+      });
+    }
+
+    const playerId = getPlayerIdFromRequest(req);
+    if (!playerId || !req.body?.snapshot) {
+      return res.status(400).json({
+        ok: false,
+        message: "Player id and snapshot are required.",
+        ...appConfig
+      });
+    }
+
+    try {
+      const result = await saveLocalGameSnapshot?.(playerId, {
+        playerName: req.body?.playerName,
+        snapshot: req.body?.snapshot
+      });
+
+      res.status(200).json({
+        ok: true,
+        result: result ?? { status: "ok" },
+        ...appConfig
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        message: error?.message || "Unable to persist the local game snapshot.",
+        ...appConfig
+      });
+    }
+  });
+
+  app.delete("/api/local-game", async (req, res) => {
+    await refreshAppConfig?.();
+    const appConfig = getAppConfig?.() ?? {};
+
+    if (!appConfig.dbAvailable) {
+      return res.status(200).json({
+        ok: true,
+        result: { status: "offline" },
+        ...appConfig
+      });
+    }
+
+    const playerId = getPlayerIdFromRequest(req);
+    if (!playerId) {
+      return res.status(400).json({
+        ok: false,
+        message: "Player id is required.",
+        ...appConfig
+      });
+    }
+
+    try {
+      const result = await clearLocalGameSnapshot?.(playerId);
+      res.status(200).json({
+        ok: true,
+        result: result ?? { status: "ok" },
+        ...appConfig
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        message: error?.message || "Unable to clear the local game snapshot.",
+        ...appConfig
       });
     }
   });
@@ -170,6 +299,46 @@ function createApp({
       res.status(503).json({
         ok: false,
         message: error?.message || "Unable to load player presence.",
+        ...appConfig
+      });
+    }
+  });
+
+  app.post("/api/admin/db/expire", async (req, res) => {
+    const appConfig = await requireDevAdmin(req, res);
+    if (!appConfig) return;
+
+    try {
+      const result = await runRoomExpiryJob?.();
+      res.status(200).json({
+        ok: true,
+        result: result ?? { deletedRoomCount: 0, deletedRoomIds: [] },
+        ...appConfig
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        message: error?.message || "Unable to run the expiry job.",
+        ...appConfig
+      });
+    }
+  });
+
+  app.post("/api/admin/db/clear", async (req, res) => {
+    const appConfig = await requireDevAdmin(req, res);
+    if (!appConfig) return;
+
+    try {
+      const result = await clearAdminDatabase?.();
+      res.status(200).json({
+        ok: true,
+        result: result ?? { status: "ok" },
+        ...appConfig
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        message: error?.message || "Unable to clear persisted database values.",
         ...appConfig
       });
     }

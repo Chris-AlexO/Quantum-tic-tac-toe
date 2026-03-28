@@ -41,4 +41,6 @@ test("postgres schema uses RDS-friendly PostgreSQL types", async () => {
   assert.match(schema, /JSONB NOT NULL/);
   assert.match(schema, /TIMESTAMPTZ NOT NULL/);
   assert.match(schema, /USING GIN\(snapshot_json\)/);
+  assert.match(schema, /expires_at TIMESTAMPTZ/);
+  assert.match(schema, /INTERVAL '7 days'/);
 });

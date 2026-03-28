@@ -13,6 +13,8 @@ import { createActions } from "./interaction.js";
 import {wireSocketToBus} from "./network/wireHandlers.js";
 import { createDispatcher } from "./game/dispatch.js";
 import { createLocalGameController } from "./game/localGame.js";
+import { MatchmakingView } from "./views/MatchmakingView.js";
+import { hasSavedPlayerName } from "./game/state.js";
 
 //Create App root uwu
 const root = document.getElementById("app");
@@ -37,13 +39,14 @@ const turnOffEventHandlers = createEventHandlers();
 const emitter = createEmitter();
 //create reciever. This holds all methods that request data from server.
 const reciever = createReciever();
-const localGame = createLocalGameController();
+const localGame = createLocalGameController({ appConfig, reciever });
 
 //This logic handles routing to different views based on URL patterns. Also randles refresh internally.
 //This is getting roomId from url
 const router = createRouter({
   routes: [
     { name: "main",  pattern: /^\/(?:main\/?)?$/ },
+    { name: "matchmaking", pattern: /^\/matchmaking\/?$/ },
     { name: "mp", pattern: /^\/game\/mp\/(?<id>[^/]+)\/?$/ },
     { name: "local", pattern: /^\/game\/local\/?$/ },
     { name: "active-games", pattern: /^\/games\/active\/?$/ },
@@ -51,12 +54,39 @@ const router = createRouter({
   ],
   onRoute: ({ name, params }) => {
     if (name === "main") vm.show(MainView);
+    if (name === "matchmaking") {
+      if (!appConfig.multiplayerEnabled) {
+        vm.show(ErrorView, {
+          title: "Multiplayer is unavailable",
+          message: "PostgreSQL is currently offline, so only local games are available right now."
+        });
+        return;
+      }
+
+      if (!hasSavedPlayerName()) {
+        vm.show(ErrorView, {
+          title: "Player name required",
+          message: "Save a clean player name before starting multiplayer matchmaking."
+        });
+        return;
+      }
+
+      vm.show(MatchmakingView);
+    }
     if (name === "local") vm.show(GameView , { local: true });
     if (name === "mp") {
       if (!appConfig.multiplayerEnabled) {
         vm.show(ErrorView, {
           title: "Multiplayer is unavailable",
           message: "PostgreSQL is currently offline, so only local games are available right now."
+        });
+        return;
+      }
+
+      if (!hasSavedPlayerName()) {
+        vm.show(ErrorView, {
+          title: "Player name required",
+          message: "Save a clean player name before joining a multiplayer room."
         });
         return;
       }
@@ -68,6 +98,14 @@ const router = createRouter({
         vm.show(ErrorView, {
           title: "Active games are unavailable",
           message: "PostgreSQL is currently offline, so the active-games list cannot be loaded."
+        });
+        return;
+      }
+
+      if (!hasSavedPlayerName()) {
+        vm.show(ErrorView, {
+          title: "Player name required",
+          message: "Save a clean player name before browsing active multiplayer rooms."
         });
         return;
       }
@@ -91,6 +129,7 @@ const dispatch = createDispatcher(action.handleAction); //Validates actions
 
 //Add action as a dependency as this will called when buttons are clicked, you get me.
 vm.deps.action = action;
+vm.deps.emitter = emitter;
 vm.deps.reciever = reciever; // Some views will auto call these to receive data from server.
 vm.deps.dispatch = dispatch; // Game views will need to dispatch actions based on user interaction.
 vm.deps.localGame = localGame;

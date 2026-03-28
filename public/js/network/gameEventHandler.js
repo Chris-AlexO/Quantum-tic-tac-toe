@@ -3,12 +3,15 @@ import {
   getMark,
   getState,
   handleServerStateUpdate,
+  setDisconnectState,
   setRematchPrompt,
   setToastMessage,
 } from "../game/state.js";
 import { withAck } from "./withAck.js";
 
 export function createGameEventHandler() {
+  let lastDisconnectToastKey = null;
+
   const applyServerState = (serverState, mark = getMark(), role = getState().session.role) => {
     if (!serverState) return;
 
@@ -28,6 +31,8 @@ export function createGameEventHandler() {
       requestedAt: rematchRequest.requestedAt
     });
   };
+
+  const describeOpponentMark = mark => (mark === "X" ? "Player X" : "Player O");
 
   const offConnect = on("net:connect", async () => {
     try {
@@ -145,8 +150,69 @@ export function createGameEventHandler() {
     }
   });
 
-  const offPlayerOffline = on("player:offline", () => {});
-  const offPlayerLeft = on("player:left", () => {});
+  const offPlayerOffline = on("player:offline", data => {
+    const liveState = getState();
+    if (liveState.session.role !== "player") {
+      return;
+    }
+
+    if (!data?.mark || data.mark === liveState.session.playerMark) {
+      return;
+    }
+
+    setDisconnectState({
+      disconnectedMark: data.mark,
+      expiresAt: data.expiresAt ?? null
+    });
+
+    const toastKey = `${data.mark}:${data.expiresAt ?? "unknown"}`;
+    if (lastDisconnectToastKey !== toastKey) {
+      lastDisconnectToastKey = toastKey;
+      setToastMessage(
+        `${describeOpponentMark(data.mark)} disconnected. They have 30 seconds to reconnect before forfeiting.`
+      );
+    }
+  });
+
+  const offPlayerTimeoutWarning = on("player:timeout-warning", data => {
+    const liveState = getState();
+    if (liveState.session.role !== "player") {
+      return;
+    }
+
+    if (!data?.mark || data.mark === liveState.session.playerMark) {
+      return;
+    }
+
+    setDisconnectState({
+      disconnectedMark: data.mark,
+      expiresAt: data.expiresAt ?? null,
+      secondsRemaining: data.secondsRemaining ?? null
+    });
+  });
+
+  const offPlayerLeft = on("player:left", data => {
+    const liveState = getState();
+    if (liveState.session.role === "spectator") {
+      return;
+    }
+
+    if (data?.winnerMark && data.winnerMark === liveState.session.playerMark) {
+      setToastMessage(
+        data.reason === "disconnect"
+          ? "Your opponent did not return in time. You win by forfeit."
+          : "Your opponent forfeited the match."
+      );
+      return;
+    }
+
+    if (data?.reason === "disconnect") {
+      setToastMessage("The disconnected player forfeited the match.");
+      return;
+    }
+
+    setToastMessage("A player left the match.");
+  });
   const offDisconnect = on("net:disconnect", ({ reason }) => {
     console.warn(`Disconnected from server: ${reason}`);
   });
@@ -162,6 +228,7 @@ export function createGameEventHandler() {
     offRematchRequested();
     offRematchStatus();
     offPlayerOffline();
+    offPlayerTimeoutWarning();
     offPlayerLeft();
     offDisconnect();
   };
