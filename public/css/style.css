@@ -712,6 +712,14 @@ svg text{
   background: rgba(248, 250, 252, 0.2);
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid rgba(125, 211, 252, 0.95);
+  outline-offset: 3px;
+}
+
 .classic-token {
   font-size: 2.1rem;
   letter-spacing: 0.04em;
@@ -857,6 +865,10 @@ svg text{
 
 .board-cell {
   cursor: pointer;
+}
+
+.board-cell:focus-visible {
+  outline: none;
 }
 
 .board-cell:hover .board-background-rect,
@@ -1279,6 +1291,88 @@ svg text{
   padding: 0.8rem 1rem;
   border-radius: 999px;
   box-shadow: var(--shadow-lg);
+}
+
+.summary-modal,
+.status-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.summary-modal.is-visible,
+.status-overlay.is-visible {
+  pointer-events: auto;
+}
+
+.summary-card,
+.status-overlay-card {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025)),
+    rgba(15, 23, 42, 0.96);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-strong);
+}
+
+.summary-close {
+  width: auto;
+  min-height: 38px;
+  margin: 0 0 0.85rem auto;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.12);
+}
+
+.summary-title,
+.status-overlay-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.summary-body,
+.status-overlay-body {
+  margin: 0.85rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.summary-meta {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.summary-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.summary-actions {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.status-overlay-countdown {
+  margin: 1rem 0 0;
+  color: var(--text-strong);
+  font-size: 2.5rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .main-view {
@@ -2105,6 +2199,25 @@ svg text{
 
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .quantum-entanglement-line,
+  .collapse-preview-orbital,
+  .matchmaking-orb,
+  .react-matchmaking-orb,
+  .status-banner {
+    animation: none !important;
   }
 }
 

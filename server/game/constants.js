@@ -1,26 +1,25 @@
-// game/constants.js
-
+import {
+  BOARD_SIZE,
+  INNER_BOARD_SIZE,
+  MATCH_START_DELAY_MS,
+  RULESETS,
+  TURN_SECONDS,
+  WINNING_LINES
+} from "../../shared/game/rulesEngine.js";
 
 const C = {
-  BOARD_SIZE: 9,
-  INNER_BOARD_SIZE: 9,
+  BOARD_SIZE,
+  INNER_BOARD_SIZE,
 
-  WINNING_LINES: [
-    [1,2,3], [4,5,6], [7,8,9],
-    [1,4,7], [2,5,8], [3,6,9],
-    [1,5,9], [3,5,7]
-  ],
+  WINNING_LINES,
 
   PLAYER_MARKS: ["X", "O"],
 
-  RULESETS: {
-    HOUSE: "house",
-    GOFF: "goff"
-  },
+  RULESETS,
 
   TIME: {
-    TURN_SECONDS: 600,
-    MATCH_START_DELAY_MS: 3_000,
+    TURN_SECONDS,
+    MATCH_START_DELAY_MS,
     DISCONNECT_GRACE_MS: 30_000,
     TIMEOUT_WARNING_INTERVAL_MS: 1_000
   },

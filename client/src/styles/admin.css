@@ -1,0 +1,132 @@
+.app-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.app-stack-list {
+  display: grid;
+  gap: 14px;
+}
+
+.app-list-card,
+.app-list-button {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+  background: var(--app-surface-strong);
+  color: var(--app-ink);
+  text-align: left;
+}
+
+.app-list-button {
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-list-button.is-selected {
+  border-color: rgba(56, 189, 248, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.18);
+}
+
+.app-list-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  width: fit-content;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--app-muted);
+}
+
+.app-status-pill.is-live {
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--app-accent);
+}
+
+.app-status-pill.is-waiting {
+  background: rgba(251, 146, 60, 0.14);
+  color: var(--app-warm);
+}
+
+.app-status-pill.is-offline {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--app-muted);
+}
+
+.app-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.app-detail-grid div {
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface-strong);
+}
+
+.app-detail-grid dt {
+  margin-bottom: 4px;
+  color: var(--app-muted);
+  font-size: 0.84rem;
+}
+
+.app-detail-grid dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.app-code-block {
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid var(--app-border);
+  background: rgba(2, 6, 23, 0.7);
+  color: #dbeafe;
+  font: 0.92rem/1.5 "SFMono-Regular", "Menlo", monospace;
+}
+
+.app-confirm-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(251, 146, 60, 0.24);
+  border-radius: 16px;
+  background: rgba(251, 146, 60, 0.08);
+}
+
+.app-confirm-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+@media (max-width: 760px) {
+  .app-section-head,
+  .app-list-card-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

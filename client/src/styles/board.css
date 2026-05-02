@@ -1,0 +1,361 @@
+.game-board-wrap {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    rgba(2, 6, 23, 0.42);
+  box-shadow: var(--shadow-lg);
+}
+
+.board-svg {
+  position: relative;
+  z-index: 1;
+  background-color: transparent;
+  min-width: 100px;
+  width: min(68vmin, 720px);
+  height: auto;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.35));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.board-background-rect {
+  fill: rgba(15, 23, 42, 0.72);
+  stroke: rgba(255, 255, 255, 0.16);
+  transition: fill 140ms ease, stroke 140ms ease, transform 140ms ease;
+}
+
+.board-background-rect.board-cycle-highlight {
+  fill: rgba(88, 28, 135, 0.36);
+  stroke: rgba(244, 114, 182, 0.82);
+}
+
+.board-background-rect.board-collapse-target {
+  fill: rgba(30, 41, 59, 0.94);
+  stroke: rgba(244, 114, 182, 0.72);
+}
+
+.board-background-rect.board-collapsed-x {
+  fill: rgba(30, 64, 175, 0.34);
+  stroke: rgba(125, 211, 252, 0.8);
+}
+
+.board-background-rect.board-collapsed-o {
+  fill: rgba(154, 52, 18, 0.34);
+  stroke: rgba(253, 186, 116, 0.82);
+}
+
+.board-little-cell-rect {
+  fill: rgba(255, 255, 255, 0.025);
+  stroke: rgba(255,255,255,0.12);
+  stroke-width: 0.03;
+  pointer-events: none;
+}
+
+.board-cell {
+  cursor: pointer;
+}
+
+.board-cell:focus-visible {
+  outline: none;
+}
+
+.board-cell:hover .board-background-rect,
+.board-cell:focus-visible .board-background-rect {
+  fill: rgba(30, 41, 59, 0.92);
+  stroke: rgba(248, 250, 252, 0.32);
+}
+
+.board-cell:hover .board-background-rect.board-collapsed-x,
+.board-cell:focus-visible .board-background-rect.board-collapsed-x {
+  fill: rgba(30, 64, 175, 0.4);
+  stroke: rgba(125, 211, 252, 0.88);
+}
+
+.board-cell:hover .board-background-rect.board-collapsed-o,
+.board-cell:focus-visible .board-background-rect.board-collapsed-o {
+  fill: rgba(154, 52, 18, 0.4);
+  stroke: rgba(253, 186, 116, 0.9);
+}
+
+.q-layer-group rect {
+  pointer-events: none;
+}
+
+svg text {
+  dominant-baseline: middle;
+  text-align: middle;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.classic-text {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 48px;
+  user-select: none;
+  pointer-events: none;
+  font-weight: 700;
+}
+
+.classic-text.board-classic-x {
+  fill: #e0f2fe;
+  filter: drop-shadow(0 0 18px rgba(96, 165, 250, 0.45));
+}
+
+.classic-text.board-classic-o {
+  fill: #ffedd5;
+  filter: drop-shadow(0 0 18px rgba(251, 146, 60, 0.42));
+}
+
+.classic-token {
+  font-size: 2.1rem;
+  letter-spacing: 0.04em;
+}
+
+.quantum-symbol,
+.choosing-symbol {
+  paint-order: stroke;
+  stroke: rgba(15, 23, 42, 0.55);
+  stroke-width: 2px;
+  transition: transform 160ms ease, filter 160ms ease, opacity 160ms ease;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.quantum-orbital {
+  pointer-events: none;
+  opacity: 0.82;
+}
+
+.quantum-core,
+.quantum-orbit {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.quantum-core {
+  stroke-width: 1.35;
+}
+
+.quantum-core-x,
+.quantum-orbit-x {
+  stroke: rgba(147, 197, 253, 0.48);
+}
+
+.quantum-core-o,
+.quantum-orbit-o {
+  stroke: rgba(253, 186, 116, 0.46);
+}
+
+.quantum-core-x {
+  fill: rgba(96, 165, 250, 0.1);
+}
+
+.quantum-core-o {
+  fill: rgba(251, 146, 60, 0.1);
+}
+
+.quantum-orbit {
+  stroke-width: 1.1;
+  stroke-dasharray: 2.2 2.8;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.08));
+}
+
+.quantum-entanglement-layer {
+  pointer-events: none;
+}
+
+.quantum-entanglement-line {
+  pointer-events: none;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  opacity: 0.28;
+  filter: drop-shadow(0 0 8px rgba(15, 23, 42, 0.4));
+  animation: entanglementPulse 6.4s ease-in-out infinite;
+  transition: opacity 220ms ease, stroke-width 220ms ease, filter 220ms ease;
+}
+
+.quantum-entanglement-line-x {
+  stroke: rgba(96, 165, 250, 0.78);
+}
+
+.quantum-entanglement-line-o {
+  stroke: rgba(251, 146, 60, 0.76);
+}
+
+.cycle-entanglement-line {
+  opacity: 0.48;
+}
+
+.collapse-preview-orbital {
+  animation: orbitalSpin 2.8s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 0 6px rgba(248, 250, 252, 0.2));
+}
+
+.collapse-preview-origin-orbital {
+  animation-duration: 2.2s;
+}
+
+.cycle-involved-symbol {
+  stroke-width: 3px;
+}
+
+.cycle-involved-symbol:hover {
+  transform: scale(1.08);
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: brightness(1.2);
+}
+
+.cycle-involved-symbol-x {
+  fill: #0967e1 !important;
+  stroke: rgba(2, 47, 101, 0.92);
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.8))
+          drop-shadow(0 0 8px rgba(96, 165, 250, 0.6));
+}
+
+.cycle-involved-symbol-o {
+  fill: #e42407 !important;
+  stroke: rgba(87, 7, 7, 0.92);
+  filter: drop-shadow(0 0 4px rgba(251, 146, 60, 0.8))
+          drop-shadow(0 0 8px rgba(251, 146, 60, 0.6));
+}
+
+.cycle-not-involved-symbol {
+  opacity: 0.25;
+  filter: blur(0.5px);
+  transition: all 0.2s ease;
+}
+
+.cycle-not-involved-symbol-x {
+  fill: #1e3a8a;
+  stroke: rgba(96, 165, 250, 0.25);
+}
+
+.cycle-not-involved-symbol-o {
+  fill: #7c2d12;
+  stroke: rgba(251, 146, 60, 0.25);
+}
+
+.collapse-context-symbol {
+  opacity: 1;
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
+}
+
+.collapse-choice-symbol {
+  opacity: 1;
+  stroke-width: 3.2px;
+  filter: drop-shadow(0 0 4px rgba(248, 250, 252, 0.2));
+}
+
+.collapse-passive-symbol {
+  opacity: 0.82;
+  stroke-width: 2.7px;
+}
+
+.collapse-outside-symbol {
+  opacity: 0.26;
+}
+
+.collapse-preview-symbol {
+  opacity: 1 !important;
+  filter: brightness(1.22)
+          drop-shadow(0 0 8px rgba(248, 250, 252, 0.42));
+  transform: scale(1.08);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.collapse-preview-choice-symbol {
+  stroke-width: 3.6px;
+  filter: brightness(1.28)
+          drop-shadow(0 0 10px rgba(248, 250, 252, 0.52))
+          drop-shadow(0 0 16px rgba(59, 130, 246, 0.24));
+}
+
+.collapse-preview-origin-symbol {
+  filter: brightness(1.28)
+          drop-shadow(0 0 10px rgba(248, 250, 252, 0.5))
+          drop-shadow(0 0 16px rgba(244, 114, 182, 0.32));
+}
+
+.collapse-preview-auto-symbol {
+  stroke-width: 3px;
+  filter: brightness(1.16)
+          drop-shadow(0 0 7px rgba(248, 250, 252, 0.34))
+          drop-shadow(0 0 12px rgba(244, 114, 182, 0.14));
+}
+
+.collapse-rest-choice-symbol {
+  opacity: 0.56 !important;
+  stroke-width: 2.9px;
+  filter: saturate(0.92)
+          drop-shadow(0 0 4px rgba(248, 250, 252, 0.14));
+}
+
+.collapse-rest-symbol {
+  opacity: 0.16 !important;
+  stroke-width: 2px;
+  filter: saturate(0.5) blur(0.18px);
+}
+
+.collapse-preview-line {
+  opacity: 0.92;
+  stroke-width: 3.6;
+  filter: drop-shadow(0 0 10px rgba(248, 250, 252, 0.34));
+}
+
+.cycle-path-line {
+  pointer-events: none;
+}
+
+.cycle-path-node {
+  pointer-events: none;
+}
+
+.winning-line-glow {
+  stroke: rgba(250, 204, 21, 0.34);
+  stroke-width: 18;
+  filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.42));
+}
+
+.winning-line-core {
+  stroke: #fde047;
+  stroke-width: 8;
+}
+
+@keyframes entanglementPulse {
+  0%,
+  100% {
+    opacity: 0.22;
+    filter: drop-shadow(0 0 6px rgba(15, 23, 42, 0.22));
+  }
+
+  50% {
+    opacity: 0.42;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.14));
+  }
+}
+
+@keyframes orbitalSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

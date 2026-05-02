@@ -1,0 +1,1 @@
+Do not overengineer. Keep things concise where possible.

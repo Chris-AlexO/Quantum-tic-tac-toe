@@ -1,17 +1,29 @@
 import Room from "./Room.js";
+import { createMatchmakingQueue } from "./matchmakingQueue.js";
+import { createPlayerRoomIndex } from "./playerRoomIndex.js";
+import { createRoomPersistenceSession } from "./roomPersistenceSession.js";
 
 export default class RoomManager {
     constructor({ repository = null, runRepositoryTask = null } = {}){
         this.rooms = new Map();
-        this.hostIndex = new Map();
-        this.playerIndex = new Map(); //{playerID: roomId, mark}
-        this.waitingPlayer= null;
+        this.playerRooms = createPlayerRoomIndex();
+        this.hostIndex = this.playerRooms.hostIndex;
+        this.playerIndex = this.playerRooms.playerIndex; //{playerID: roomId, mark}
         this.repository = repository;
         this.runRepositoryTask = runRepositoryTask;
-
-        this.waitQueue = []; // [{ playerId, roomId, type, createdAt }]
-        this.WAIT_TTL_MS = 30_000; 
-    }
+	        this.matchmakingQueue = createMatchmakingQueue({
+	          hasRoom: roomId => this.rooms.has(roomId)
+	        });
+	        this.persistenceSession = createRoomPersistenceSession({
+	          getPlayerId: playerOrId => this.getPlayerId(playerOrId),
+	          rooms: this.rooms,
+	          playerIndex: this.playerIndex,
+	          getRepositoryContext: () => ({
+	            repository: this.repository,
+	            runRepositoryTask: this.runRepositoryTask
+	          })
+	        });
+	    }
 
     setPersistenceContext({ repository = null, runRepositoryTask = null } = {}) {
         this.repository = repository;
@@ -19,12 +31,7 @@ export default class RoomManager {
     }
 
     getPlayerId(playerOrId) {
-        if (!playerOrId) return null;
-        if (typeof playerOrId === "string") return playerOrId;
-        if (typeof playerOrId.getPlayerID === "function") {
-            return playerOrId.getPlayerID();
-        }
-        return playerOrId.playerId ?? null;
+        return this.playerRooms.getPlayerId(playerOrId);
     }
 
     createRoom(deps){
@@ -39,13 +46,7 @@ export default class RoomManager {
         player.setRoom(room.roomId);
         player.setMark("X");
 
-        this.hostIndex.set(player.playerId, room.roomId);
-        this.playerIndex.set(player.playerId, {
-          roomId: room.roomId,
-          socketId: player.socketId,
-          player,
-          mark: "X",
-        });
+        this.playerRooms.addPlayer(player, room, "X");
         return room.roomId;
     }
 
@@ -54,23 +55,8 @@ export default class RoomManager {
 
       this.rooms.delete(room.roomId);
 
-      for (const [playerId, rec] of this.playerIndex.entries()) {
-        if (rec.roomId === room.roomId) {
-          this.playerIndex.delete(playerId);
-        }
-      }
-
-      for (const [playerId, rid] of this.hostIndex.entries()) {
-        if (rid === room.roomId) {
-          this.hostIndex.delete(playerId);
-        }
-      }
-
-      this.waitQueue = this.waitQueue.filter(w => w.roomId !== room.roomId);
-
-      if (this.waitingPlayer?.roomId === room.roomId) {
-        this.waitingPlayer = null;
-      }
+      this.playerRooms.clearRoom(room.roomId);
+      this.matchmakingQueue.removeRoom(room.roomId);
 
       return true;
 }
@@ -84,22 +70,9 @@ export default class RoomManager {
 
       const targetPlayerId = playerId ?? null;
       if (targetPlayerId) {
-        this.playerIndex.delete(targetPlayerId);
-        if (this.hostIndex.get(targetPlayerId) === room.roomId) {
-          this.hostIndex.delete(targetPlayerId);
-        }
+        this.playerRooms.clearPlayer(targetPlayerId, room.roomId);
       } else {
-        for (const [indexedPlayerId, rec] of this.playerIndex.entries()) {
-          if (rec?.roomId === room.roomId) {
-            this.playerIndex.delete(indexedPlayerId);
-          }
-        }
-
-        for (const [indexedPlayerId, indexedRoomId] of this.hostIndex.entries()) {
-          if (indexedRoomId === room.roomId) {
-            this.hostIndex.delete(indexedPlayerId);
-          }
-        }
+        this.playerRooms.clearRoom(room.roomId);
       }
 
       if (dropSeat) {
@@ -124,9 +97,9 @@ export default class RoomManager {
         room.spectators = new Set();
       }
 
-      this.waitQueue = this.waitQueue.filter(w => w.roomId !== room.roomId && w.playerId !== targetPlayerId);
-      if (this.waitingPlayer?.roomId === room.roomId || this.waitingPlayer?.playerId === targetPlayerId) {
-        this.waitingPlayer = null;
+      this.matchmakingQueue.removeRoom(room.roomId);
+      if (targetPlayerId) {
+        this.matchmakingQueue.removePlayer(targetPlayerId);
       }
 
       return true;
@@ -135,13 +108,7 @@ export default class RoomManager {
     shouldDeleteRoom(room) {
       if (!room) return false;
 
-      for (const rec of this.playerIndex.values()) {
-        if (rec.roomId === room.roomId) {
-          return false;
-        }
-      }
-
-      return true;
+      return !this.playerRooms.hasRoomReference(room.roomId);
     }
 
     getRoom(roomId){
@@ -181,11 +148,7 @@ export default class RoomManager {
     }
 
     registerPlayer(player){
-        this.playerIndex.set(
-            player.playerId, 
-        {
-          roomId: player.roomId,
-        });
+        this.playerIndex.set(player.playerId, { roomId: player.roomId });
 
         //if(player.mark === "X") this.hostIndex.set(player.playerId, room.roomId);
         return 1;
@@ -200,14 +163,7 @@ export default class RoomManager {
     addPlayerToRoom(player, room, mark) {
         if (!player || !room || !mark) return false;
 
-        const rec = this.playerIndex.get(player.playerId) || {};
-        this.playerIndex.set(player.playerId, {
-          ...rec,
-          roomId: room.roomId,
-          socketId: player.socketId,
-          player,
-          mark,
-        });
+        this.playerRooms.addPlayer(player, room, mark);
 
         room.players[mark] = player;
         player.setRoom(room.roomId);
@@ -227,193 +183,34 @@ export default class RoomManager {
         return this.rooms.get(roomId);
     }
 
-    async getPersistedPlayerPresence(playerOrId) {
-      const playerId = this.getPlayerId(playerOrId);
-      if (!playerId || !this.repository?.getPlayerPresence || !this.runRepositoryTask) {
-        return null;
-      }
+	    async getPersistedPlayerPresence(playerOrId) {
+	      return this.persistenceSession.getPersistedPlayerPresence(playerOrId);
+	    }
 
-      return this.runRepositoryTask(() => this.repository.getPlayerPresence(playerId));
-    }
+	    async hydratePlayerFromPersistence(player) {
+	      return this.persistenceSession.hydratePlayerFromPersistence(player);
+	    }
 
-    async hydratePlayerFromPersistence(player) {
-      if (!player) return null;
+	    async resolvePlayerSession(playerOrId) {
+	      return this.persistenceSession.resolvePlayerSession(playerOrId);
+	    }
 
-      const persisted = await this.getPersistedPlayerPresence(player);
-      if (!persisted) {
-        return null;
-      }
-
-      if (persisted.displayName && !player.getName()) {
-        player.setName(persisted.displayName);
-      }
-
-      if (persisted.activeRoomId && this.rooms.has(persisted.activeRoomId)) {
-        const room = this.rooms.get(persisted.activeRoomId);
-        const nextMark = persisted.activeMark ?? room.getPlayerMark(player) ?? null;
-        const rec = this.playerIndex.get(player.playerId) || {};
-
-        this.playerIndex.set(player.playerId, {
-          ...rec,
-          roomId: persisted.activeRoomId,
-          socketId: player.socketId,
-          player,
-          mark: nextMark,
-          role: persisted.activeRole ?? rec.role ?? null,
-        });
-
-        player.setRoom(persisted.activeRoomId);
-        if (nextMark) {
-          player.setMark(nextMark);
-        }
-      }
-
-      return persisted;
-    }
-
-    async resolvePlayerSession(playerOrId) {
-      const playerId = this.getPlayerId(playerOrId);
-      if (!playerId) {
-        return null;
-      }
-
-      const cachedRecord = this.playerIndex.get(playerId);
-      const cachedRoom = cachedRecord?.roomId ? this.rooms.get(cachedRecord.roomId) : null;
-      if (cachedRoom) {
-        return {
-          source: "cache",
-          room: cachedRoom,
-          roomId: cachedRoom.roomId,
-          mark: cachedRecord?.mark ?? cachedRoom.getPlayerMark(playerOrId) ?? null,
-          role: cachedRecord?.mark ? "player" : cachedRecord?.role ?? null,
-          snapshot: null,
-        };
-      }
-
-      const persisted = await this.getPersistedPlayerPresence(playerId);
-      if (!persisted?.activeRoomId || !this.rooms.has(persisted.activeRoomId)) {
-        return persisted
-          ? {
-              source: "db",
-              room: null,
-              roomId: persisted.activeRoomId ?? null,
-              mark: persisted.activeMark ?? null,
-              role: persisted.activeRole ?? null,
-              snapshot: persisted.snapshot ?? null,
-              displayName: persisted.displayName ?? null,
-            }
-          : null;
-      }
-
-      const room = this.rooms.get(persisted.activeRoomId);
-      const record = cachedRecord || {};
-      this.playerIndex.set(playerId, {
-        ...record,
-        roomId: persisted.activeRoomId,
-        mark: persisted.activeMark ?? record.mark ?? room.getPlayerMark(playerOrId) ?? null,
-        role: persisted.activeRole ?? record.role ?? null,
-      });
-
-      return {
-        source: "db",
-        room,
-        roomId: room.roomId,
-        mark: persisted.activeMark ?? room.getPlayerMark(playerOrId) ?? null,
-        role: persisted.activeRole ?? null,
-        snapshot: persisted.snapshot ?? null,
-        displayName: persisted.displayName ?? null,
-      };
-    }
-
-    async resolvePlayerRoom(playerOrId) {
-      const session = await this.resolvePlayerSession(playerOrId);
-      return session?.room ?? null;
-    }
+	    async resolvePlayerRoom(playerOrId) {
+	      return this.persistenceSession.resolvePlayerRoom(playerOrId);
+	    }
 
     enqueueWaiting({ playerId, roomId, type = "mp", ruleset = "house" }) {
-    // prevent duplicates
-    this.waitQueue = this.waitQueue.filter(w => w.playerId !== playerId);
-
-    this.waitQueue.push({ playerId, roomId, type, ruleset, createdAt: Date.now() });
+    this.matchmakingQueue.enqueue({ playerId, roomId, type, ruleset });
   }
 
   dequeueMatch({ exceptPlayerId, type = "mp", ruleset = "house" }) {
-    const now = Date.now();
-
-    // find first valid entry
-    for (let i = 0; i < this.waitQueue.length; i++) {
-      const w = this.waitQueue[i];
-
-      // skip wrong type
-      if (w.type !== type) continue;
-      if ((w.ruleset ?? "house") !== ruleset) continue;
-
-      // skip self
-      if (w.playerId === exceptPlayerId) continue;
-
-      // drop stale entries
-      if (now - w.createdAt > this.WAIT_TTL_MS) {
-        this.waitQueue.splice(i, 1);
-        i--;
-        continue;
-      }
-
-      // drop if room gone
-      if (!this.rooms.has(w.roomId)) {
-        this.waitQueue.splice(i, 1);
-        i--;
-        continue;
-      }
-
-      // found a match: remove and return it
-      this.waitQueue.splice(i, 1);
-      return w;
-    }
-
-    return null;
+    return this.matchmakingQueue.dequeue({ exceptPlayerId, type, ruleset });
   }
 
   removeFromQueue(player) {
-    this.waitQueue = this.waitQueue.filter(w => w.playerId !== player.playerId);
+    this.matchmakingQueue.removePlayer(player);
   }
 
-    
-    setWaitingPlayer({ playerId, roomId }) 
-    {
-    this.waitingPlayer = { playerId, roomId, createdAt: Date.now() };
-    }
-
-    clearWaitingPlayer(player) {
-    if (this.waitingPlayer?.playerId === player.playerId) this.waitingPlayer = null;
-    }
-
-    claimWaiting(exceptPlayer) {
-        if (!this.waitingPlayer) return null;
-        if (this.waitingPlayer.playerId === exceptPlayer.playerId) return null;
-
-        const w = this.waitingPlayer;
-        this.waitingPlayer = null;
-    return w;
-    }
-
-    getWaitingPlayer() {
-    return this.waitingPlayer;
-    }
-
-    disconnectPlayer(player){
-
-    }
-
-    reconnectPlayer(player){
-
-    }
-
-    // --- Example matchmaking API ---
-
-  /**
-   * Call when a player clicks "Quick Match"
-   * Returns: { kind: "JOIN", roomId, mark } or { kind: "WAIT", roomId, mark }
-   */
   quickMatch(player, { type = "mp", ruleset = "house" } = {}) {
       const existingRoom = this.getPlayerRoom(player);
       if (existingRoom) {

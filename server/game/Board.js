@@ -1,26 +1,24 @@
-import C from "./constants.js";
+import {
+  cloneBoard,
+  createBoard,
+  isCollapsedCell,
+  isFullCell
+} from "../../shared/game/rulesEngine.js";
 
 export default class Board {
   constructor() {
-    this.board = Array.from({ length: C.BOARD_SIZE }, () =>
-      Array.from({ length: C.INNER_BOARD_SIZE }, () => null)
-    );
+    this.board = createBoard();
   }
 
   isFullCell(cell) {
-    return (
-      Array.isArray(this.board[cell]) &&
-      this.board[cell].every(value => value !== null)
-    );
+    return isFullCell(this.board, cell);
   }
 
   isCollapsedCell(cell) {
-    return !Array.isArray(this.board[cell]);
+    return isCollapsedCell(this.board, cell);
   }
 
   getBoardArray() {
-    return this.board.map(cell =>
-      Array.isArray(cell) ? [...cell] : cell
-    );
+    return cloneBoard(this.board);
   }
 }

@@ -55,7 +55,7 @@ export default class Game {
   end(ruleset) {
     const result = checkWinner(this.board.getBoardArray(), { ruleset });
     this.winner = result.winner ? (result.resolvedWinner ?? result.winningLines[0]) : this.winner;
-    this.winningLine = result.winningCombos?.[0] ?? null;
+    this.winningLine = result.winningCombos ?? null;
     this.stopTimer();
   }
 

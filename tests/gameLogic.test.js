@@ -1,8 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCollapseChoices, checkWinner, updateBoard } from "../server/game/gameLogic.js";
+import {
+  buildCollapseChoices,
+  checkIfOneSquareRemains,
+  checkWinner,
+  updateBoard
+} from "../server/game/gameLogic.js";
+import {
+  MATCH_START_DELAY_MS,
+  RULESETS,
+  TURN_SECONDS,
+  WINNING_LINES,
+  checkIfOneSquareRemains as sharedCheckIfOneSquareRemains,
+  checkWinner as sharedCheckWinner
+} from "../shared/game/localGameDomain.js";
 import C from "../server/game/constants.js";
+import Board from "../server/game/Board.js";
+import Game from "../server/game/Game.js";
 import Room from "../server/game/Room.js";
 import Player from "../server/game/Player.js";
 import RoomManager from "../server/game/RoomManager.js";
@@ -22,6 +37,26 @@ test("updateBoard adds a symbol to the next open slot", () => {
 
   const result = updateBoard(board, 4, "X1");
   assert.equal(result[4][0], "X1");
+});
+
+test("server constants mirror shared rule constants", () => {
+  assert.equal(C.TIME.TURN_SECONDS, TURN_SECONDS);
+  assert.equal(C.TIME.MATCH_START_DELAY_MS, MATCH_START_DELAY_MS);
+  assert.deepEqual(C.RULESETS, RULESETS);
+  assert.deepEqual(C.WINNING_LINES, WINNING_LINES);
+});
+
+test("server board delegates shape and cell checks to the shared rule model", () => {
+  const board = new Board();
+
+  assert.equal(board.getBoardArray().length, C.BOARD_SIZE);
+  assert.equal(board.getBoardArray()[0].length, C.INNER_BOARD_SIZE);
+  assert.equal(board.isFullCell(0), false);
+  assert.equal(board.isCollapsedCell(0), false);
+
+  board.board[0] = "X";
+
+  assert.equal(board.isCollapsedCell(0), true);
 });
 
 test("room rejoin updates the stored socket id", () => {
@@ -143,9 +178,49 @@ test("checkWinner uses Allan Goff tie-break when both players complete a line", 
   ];
 
   const result = checkWinner(board, { ruleset: C.RULESETS.GOFF });
+  const sharedResult = sharedCheckWinner(board, { ruleset: RULESETS.GOFF });
 
   assert.equal(result.winner, true);
   assert.equal(result.resolvedWinner, "X");
+  assert.deepEqual(result, sharedResult);
+});
+
+test("server and shared rules agree on final Allan Goff square collapse", () => {
+  const board = [
+    "X1",
+    "O2",
+    "X3",
+    "O4",
+    "X5",
+    "O6",
+    "X7",
+    "O8",
+    ["X9", "O9", null, null, null, null, null, null, null]
+  ];
+
+  const serverResult = checkIfOneSquareRemains(board.map(cell => Array.isArray(cell) ? [...cell] : cell), "X", {
+    ruleset: C.RULESETS.GOFF
+  });
+  const sharedResult = sharedCheckIfOneSquareRemains(board.map(cell => Array.isArray(cell) ? [...cell] : cell), "X", {
+    ruleset: RULESETS.GOFF
+  });
+
+  assert.deepEqual(serverResult, sharedResult);
+  assert.equal(serverResult[8], "X9");
+});
+
+test("game end stores the shared winning combo shape", () => {
+  const game = new Game("room-1");
+  game.board.board = [
+    "X1", "X3", "X5",
+    null, null, null,
+    null, null, null
+  ];
+
+  game.end(C.RULESETS.HOUSE);
+
+  assert.equal(game.winner, "X");
+  assert.deepEqual(game.winningLine, [[1, 2, 3]]);
 });
 
 test("buildCollapseChoices includes both placements of each house-rules cycle symbol", () => {
@@ -219,6 +294,74 @@ test("room manager clears cached room references for departed players", () => {
   assert.equal(manager.hostIndex.has(playerX.playerId), false);
   assert.equal(room.getPlayer("X"), null);
   assert.equal(manager.getPlayerRoom(playerO)?.roomId, roomId);
+});
+
+test("room manager resolves active sessions from persisted player presence", async () => {
+  const playerX = new Player("player-x", "socket-1", "Chris", "X");
+  const manager = new RoomManager({
+    repository: {
+      getPlayerPresence: async () => ({
+        displayName: "Chris",
+        activeRoomId: null,
+        activeRole: "player",
+        activeMark: "X",
+        snapshot: { fromDb: true }
+      })
+    },
+    runRepositoryTask: task => task()
+  });
+
+  const roomId = manager.createRoom({ playerX, type: "mp", host: playerX.playerId });
+  manager.clearRoomReferences(manager.getRoom(roomId));
+  manager.repository.getPlayerPresence = async () => ({
+    displayName: "Chris",
+    activeRoomId: roomId,
+    activeRole: "player",
+    activeMark: "X",
+    snapshot: { fromDb: true }
+  });
+
+  const session = await manager.resolvePlayerSession(playerX.playerId);
+
+  assert.equal(session.source, "db");
+  assert.equal(session.roomId, roomId);
+  assert.equal(session.room?.roomId, roomId);
+  assert.equal(session.mark, "X");
+  assert.equal(manager.getPlayerRoom(playerX)?.roomId, roomId);
+});
+
+test("room manager hydrates player identity from persisted presence", async () => {
+  const originalPlayer = new Player("player-x", "socket-1", "Chris", "X");
+  const reconnectingPlayer = new Player("player-x", "socket-2", "", "");
+  const manager = new RoomManager({
+    repository: {
+      getPlayerPresence: async () => ({
+        displayName: "Restored Chris",
+        activeRoomId: null,
+        activeRole: null,
+        activeMark: null,
+        snapshot: null
+      })
+    },
+    runRepositoryTask: task => task()
+  });
+
+  const roomId = manager.createRoom({ playerX: originalPlayer, type: "mp", host: originalPlayer.playerId });
+  manager.repository.getPlayerPresence = async () => ({
+    displayName: "Restored Chris",
+    activeRoomId: roomId,
+    activeRole: "player",
+    activeMark: "X",
+    snapshot: null
+  });
+
+  const persisted = await manager.hydratePlayerFromPersistence(reconnectingPlayer);
+
+  assert.equal(persisted.displayName, "Restored Chris");
+  assert.equal(reconnectingPlayer.getName(), "Restored Chris");
+  assert.equal(reconnectingPlayer.roomId, roomId);
+  assert.equal(reconnectingPlayer.mark, "X");
+  assert.equal(manager.getPlayerRecord(reconnectingPlayer).socketId, "socket-2");
 });
 
 test("quick match joins an existing waiting room for the same ruleset", () => {

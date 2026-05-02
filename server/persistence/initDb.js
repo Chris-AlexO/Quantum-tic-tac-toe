@@ -1,12 +1,16 @@
 import { createGameRepository } from "./createGameRepository.js";
+import { createLogger } from "../lib/logger.js";
 
 const repository = createGameRepository();
+const logger = createLogger("initDb");
 
 try {
   await repository.ping?.();
-  console.log("Database schema is ready.");
+  logger.info("Database schema is ready");
 } catch (error) {
-  console.error("Database initialization failed:", error?.message || error);
+  logger.error("Database initialization failed", {
+    message: error?.message || String(error)
+  });
   process.exitCode = 1;
 } finally {
   await repository.close?.();

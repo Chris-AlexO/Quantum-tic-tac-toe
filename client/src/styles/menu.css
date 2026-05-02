@@ -1,0 +1,160 @@
+.app-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.app-ruleset-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.app-ruleset-summary {
+  margin: 0;
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.22);
+  color: var(--app-muted);
+  font-size: 0.92rem;
+}
+
+.app-ruleset-summary li {
+  margin-left: 16px;
+}
+
+.app-chip {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-strong);
+  color: var(--app-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-chip.is-selected {
+  background: var(--app-accent-soft);
+  border-color: rgba(56, 189, 248, 0.36);
+  color: var(--app-accent);
+}
+
+.app-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.app-input {
+  flex: 1 1 280px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-strong);
+  color: var(--app-ink);
+  font: inherit;
+}
+
+.app-save-status {
+  align-self: center;
+  color: var(--app-muted);
+  font-weight: 700;
+}
+
+.app-name-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.app-name-summary-label {
+  margin: 0 0 4px;
+  color: var(--app-muted);
+  font-size: 0.9rem;
+}
+
+.app-name-summary-value {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.app-feedback {
+  margin: 14px 0 0;
+  color: var(--app-warm);
+  font-weight: 600;
+}
+
+.app-matchmaking-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 220px;
+  margin-top: 24px;
+  border-radius: 22px;
+  border: 1px solid var(--app-border);
+  background:
+    radial-gradient(circle at center, rgba(56, 189, 248, 0.14), transparent 58%),
+    rgba(15, 23, 42, 0.46);
+}
+
+.app-matchmaking-orb {
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.92), transparent 34%),
+    radial-gradient(circle at center, rgba(56, 189, 248, 0.78), rgba(56, 189, 248, 0.16));
+  box-shadow:
+    0 0 0 12px rgba(56, 189, 248, 0.08),
+    0 18px 44px rgba(56, 189, 248, 0.22);
+}
+
+.app-matchmaking-stage.is-found .app-matchmaking-orb {
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.92), transparent 34%),
+    radial-gradient(circle at center, rgba(18, 125, 86, 0.82), rgba(18, 125, 86, 0.18));
+  box-shadow:
+    0 0 0 12px rgba(18, 125, 86, 0.08),
+    0 18px 44px rgba(18, 125, 86, 0.22);
+}
+
+.app-matchmaking-stage.is-error .app-matchmaking-orb {
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.92), transparent 34%),
+    radial-gradient(circle at center, rgba(159, 79, 47, 0.82), rgba(159, 79, 47, 0.18));
+  box-shadow:
+    0 0 0 12px rgba(159, 79, 47, 0.08),
+    0 18px 44px rgba(159, 79, 47, 0.22);
+}
+
+.app-matchmaking-label {
+  margin: 0;
+  color: var(--app-muted);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 760px) {
+  .app-ruleset-card {
+    grid-template-columns: 1fr;
+  }
+
+  .app-name-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -1,7 +1,15 @@
-import Player from "./Player.js";
 import Game from "./Game.js";
 import { v4 as uuidv4 } from "uuid";
 import C from "./constants.js";
+import { createRoomTimers } from "./roomTimers.js";
+import {
+    applyAcceptedDraw,
+    forfeitPlayer,
+    requestDraw,
+    requestMatchAction,
+    requestRematch,
+    respondToMatchAction
+} from "./roomRequestPolicy.js";
 
 export default class Room {
     constructor(deps){
@@ -28,14 +36,13 @@ export default class Room {
 
         this.game = new Game(this.roomId);
 
-        this.timeouts = {};
-        this.timeoutIntervals = {};
-        this.playerOfflineTimeout = {};
-        this.countdownTimeout = null;
-        this.countdownEndsAt = null;
+        this.timers = createRoomTimers(this.roomId);
         this.pendingRematch = null;
         this.pendingDraw = null;
-        this.disconnectState = null;
+    }
+
+    get countdownEndsAt() {
+        return this.timers.countdownEndsAt;
     }
 
     startGame(onTimeout) {
@@ -103,81 +110,47 @@ export default class Room {
 
     beginCountdown(onComplete, delayMs = C.TIME.MATCH_START_DELAY_MS) {
         if (this.status === C.ROOM_STATUS.PLAYING) return false;
-        if (this.countdownTimeout) return false;
+        if (this.timers.hasCountdown()) return false;
 
         this.status = C.ROOM_STATUS.STARTING;
         this.clearDisconnectState();
-        this.countdownEndsAt = Date.now() + delayMs;
-        this.countdownTimeout = setTimeout(() => {
-            this.countdownTimeout = null;
-            onComplete?.();
-        }, delayMs);
-
-        return true;
+        return this.timers.beginCountdown(onComplete, delayMs);
     }
 
     clearCountdown() {
-        if (this.countdownTimeout) {
-            clearTimeout(this.countdownTimeout);
-            this.countdownTimeout = null;
-        }
-        this.countdownEndsAt = null;
+        this.timers.clearCountdown();
     }
 
     getDisconnectState() {
-        return this.disconnectState ? { ...this.disconnectState } : null;
+        return this.timers.getDisconnectState();
     }
 
     setDisconnectState(mark, expiresAt) {
-        this.disconnectState = {
-            disconnectedMark: mark,
-            expiresAt
-        };
+        this.timers.setDisconnectState(mark, expiresAt);
     }
 
     clearDisconnectState() {
-        this.disconnectState = null;
+        this.timers.clearDisconnectState();
     }
 
     isTimingOut(player){
-        return this.timeouts[player.playerId] != null;
+        return this.timers.isTimingOut(player);
     }
 
     startTimeout(player, callback){
-        if(this.timeouts[player.playerId] != null) return;
-        this.timeouts[player.playerId] = setTimeout(() => {
-            console.log(`${Date.now()} removing player ${player.playerId} (${player.getName()}) from room ${this.roomId}`);
-            callback();
-        }, C.TIME.DISCONNECT_GRACE_MS)
+        this.timers.startTimeout(player, callback);
     }
 
-    //Emits recurring warning to room about timed out user
     startTimeoutInterval(player, callback){
-        if(this.timeoutIntervals[player.playerId] != null) return;
-        this.timeoutIntervals[player.playerId] = setInterval(() => {
-            callback();
-            }, C.TIME.TIMEOUT_WARNING_INTERVAL_MS);
+        this.timers.startTimeoutInterval(player, callback);
     }
 
     startPlayerOfflineTimeout(player, callback){
-        if(this.playerOfflineTimeout[player.playerId]) return;
-        this.playerOfflineTimeout[player.playerId] = setTimeout(()=>{
-            callback()
-        }, 5000)
+        this.timers.startPlayerOfflineTimeout(player, callback);
     }
 
     endTimeout(player) {
-        const id = player?.playerId;
-        if (!id) return;
-
-        clearTimeout(this.timeouts[id]);
-        clearInterval(this.timeoutIntervals[id]);
-        clearTimeout(this.playerOfflineTimeout[id]);
-
-        delete this.timeouts[id];
-        delete this.timeoutIntervals[id];
-        delete this.playerOfflineTimeout[id];
-        this.clearDisconnectState();
+        this.timers.endTimeout(player);
     }   
 
     getId(){
@@ -301,63 +274,15 @@ export default class Room {
         target = "request",
         pendingKey = type === "draw" ? "pendingDraw" : "pendingRematch",
     } = {}) {
-        if (!allowedStatuses.includes(this.status)) {
-            return {
-                status: "error",
-                message: `${target.charAt(0).toUpperCase() + target.slice(1)} is not available right now`
-            };
-        }
-
-        if (!["X", "O"].includes(mark)) {
-            return { status: "error", message: "Only active players can send this request" };
-        }
-
-        const opponentMark = this.getOpponentMark(mark);
-        if (!this.getPlayer(opponentMark)) {
-            return { status: "error", message: "An opponent is required before sending this request" };
-        }
-
-        if (this.pendingDraw || this.pendingRematch) {
-            const pendingRequest = this.pendingDraw || this.pendingRematch;
-            if (pendingRequest.requesterMark === mark) {
-                return { status: "error", message: `${target.charAt(0).toUpperCase() + target.slice(1)} already sent` };
-            }
-
-            return { status: "error", message: "Waiting for the current match request to be answered" };
-        }
-
-        this[pendingKey] = {
-            requesterMark: mark,
-            requestedAt: Date.now(),
-            type,
-            phase: this.status
-        };
-
-        return {
-            status: "ok",
-            requesterMark: mark,
-            requestedAt: this[pendingKey].requestedAt,
-            type,
-            phase: this[pendingKey].phase
-        };
+        return requestMatchAction(this, mark, { type, allowedStatuses, target, pendingKey });
     }
 
     requestRematch(mark) {
-        return this.requestMatchAction(mark, {
-            type: "rematch",
-            allowedStatuses: [C.ROOM_STATUS.PLAYING, C.ROOM_STATUS.FINISHED],
-            target: "restart request",
-            pendingKey: "pendingRematch"
-        });
+        return requestRematch(this, mark);
     }
 
     requestDraw(mark) {
-        return this.requestMatchAction(mark, {
-            type: "draw",
-            allowedStatuses: [C.ROOM_STATUS.PLAYING],
-            target: "draw request",
-            pendingKey: "pendingDraw"
-        });
+        return requestDraw(this, mark);
     }
 
     respondToMatchAction(mark, {
@@ -366,27 +291,7 @@ export default class Room {
         pendingRequest,
         clearPendingRequest,
     }) {
-        if (!pendingRequest) {
-            return { status: "error", message: `There is no ${type} request to respond to` };
-        }
-
-        const requesterMark = pendingRequest.requesterMark;
-        const responderMark = this.getOpponentMark(requesterMark);
-
-        if (mark !== responderMark) {
-            return { status: "error", message: "Only the other player can answer this request" };
-        }
-
-        clearPendingRequest.call(this);
-
-        return {
-            status: "ok",
-            requesterMark,
-            responderMark,
-            accepted: Boolean(accept),
-            type,
-            phase: pendingRequest.phase
-        };
+        return respondToMatchAction(this, mark, { type, accept, pendingRequest, clearPendingRequest });
     }
 
     respondToRematch(mark, accept) {
@@ -410,42 +315,13 @@ export default class Room {
             return result;
         }
 
-        this.game.stopTimer();
-        this.game.setWinner("draw");
-        this.game.setWinningLine(null);
-        this.game.setCyclePath(null);
-        this.game.setNextAction("winner");
-        this.status = C.ROOM_STATUS.FINISHED;
+        applyAcceptedDraw(this);
 
         return result;
     }
 
     forfeitPlayer(mark, reason = "leave") {
-        if (!["X", "O"].includes(mark)) {
-            return { status: "error", message: "Only active players can forfeit" };
-        }
-
-        const winnerMark = this.getOpponentMark(mark);
-        if (!winnerMark || !this.getPlayer(winnerMark)) {
-            return { status: "error", message: "An opponent is required for a forfeit result" };
-        }
-
-        this.game.stopTimer();
-        this.clearCountdown();
-        this.clearPendingRequests();
-        this.clearDisconnectState();
-        this.game.setWinner(winnerMark);
-        this.game.setNextAction("winner");
-        this.game.setCyclePath(null);
-        this.game.setCollapseChoices(null);
-        this.status = C.ROOM_STATUS.FINISHED;
-
-        return {
-            status: "ok",
-            winnerMark,
-            loserMark: mark,
-            reason
-        };
+        return forfeitPlayer(this, mark, reason);
     }
 
 }
